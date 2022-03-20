@@ -1,52 +1,69 @@
-from email.policy import default
-from pickle import GLOBAL
+from sqlite3 import Date
 import pandas as pd
 import yfinance as yf
-import matplotlib.pyplot as plt
-from sklearn.linear_model import LinearRegression
-import sklearn.model_selection as model_selection
-from datetime import date
-from fastapi import FastAPI
+import datetime as datetime
+from prophet import Prophet
+from time import strftime
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 
+# today = datetime.date.today()
+# end_date = today.strftime("%Y-%m-%d")
 
+# start_date = '2015-10-10'
 
-def stock_prediction(stock_name):
-    date_today = date.today()
+# ticker = 'AAPL'
 
-    data = yf.download(stock_name, start = "2013-10-10", end=date_today)
-    df = pd.DataFrame(data)
-    x = df.loc[:,'High':'Volume']
-    y = df.loc[:,'Open']
+def predict(ticker, start_date):
+    today = datetime.date.today()
+    end_date = today.strftime("%Y-%m-%d")
+    data = yf.download(ticker, start_date, end_date)
+    
+    df_forecast = data.copy()
+    df_forecast.reset_index(inplace=True)
+    df_forecast["ds"] = df_forecast["Date"]
+    df_forecast["y"] = df_forecast["Adj Close"]
+    df_forecast = df_forecast[["ds","y"]]
+    df_forecast 
+    
+    model = Prophet()
+    model.fit(df_forecast)
+    
+    future = pd.to_datetime(end_date) + pd.DateOffset(days=7)
+    future_date = future.strftime("%Y-%m-%d")
+    dates = pd.date_range(start= end_date, end= future_date)
+    df_pred = pd.DataFrame({"ds" : dates})
+    
+    forecast = model.predict(df_pred)
+    prediction_list = forecast.tail(7).to_dict("records")
+    
+    output = {}
 
-    x_train,x_test,y_train,y_test = model_selection.train_test_split(x,y,test_size= 0.2,random_state = 0)
-    LR = LinearRegression()
-    LR.fit(x_train,y_train)
-    LR.score(x_test,y_test)
+    i=0
 
-    x_test = pd.DataFrame(x)
-    ticker = yf.Ticker(stock_name)
-    stock_today = ticker.history(period="1d")
-    today = pd.DataFrame(stock_today["Open"])
+    for data in prediction_list:
 
-    test_data = x_test.iloc[-1:]
-    prediction = LR.predict(test_data).round(2)
-
-    return (int(prediction))
-
-
-
-
-# print(stock_prediction(stock_name))
-
+        date = data["ds"].strftime("%Y-%m-%d")
+        output [i]= {
+            "date" : date,
+            "price" : data["trend"]
+        } 
+        i = i+1
+        
+        # output[date] = data["trend"]
+    
+    
+    return (output)
 
 app = FastAPI()
 
 origins = [
+    "http://localhost:8000",
+    "localhost:8000",
+    "localhost:3000",
     "http://localhost:3000",
-    "localhost:3000"
 ]
 
 app.add_middleware(
@@ -58,32 +75,28 @@ app.add_middleware(
 )
 
 
-
-
-# @app.get("/", tags=["root"])
-# async def read_root() -> dict:
-#     return {"message":"Hello world"}
-
 class StockIn(BaseModel):
-    stock_name: str
+    ticker: str
+    # start_date: datetime.date
+
 
 class StockOut(BaseModel):
-    a : dict
+    response_object : dict
 
 
 
-
-@app.post("/predict")
+@app.post('/predict')
 def prediction(payload: StockIn):
-    stock_name = payload.stock_name
-    pred = stock_prediction(stock_name)
-    a = int(pred)
-    response_object = {"data" : a }
-    return response_object
+    start_date = '2019-01-01'
+    ticker = payload.ticker
+    # start_date = payload.start_date
+    pred = predict(ticker, start_date)
 
-# @app.get('/')
-# def prediction(input_name):
-#     pred = stock_prediction(input_name)
-#     a = int(pred)
-#     return (a)
-
+    if not pred:
+        raise HTTPException(status_code=400, detail="Model not found")
+    
+    response_object = {
+        # "ticker" : ticker, 
+        "forecast": pred
+        }
+    return (response_object)
