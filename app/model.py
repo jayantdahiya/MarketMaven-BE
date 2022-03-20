@@ -1,7 +1,4 @@
-from dataclasses import Field
-# from itertools import Predicate
 from sqlite3 import Date
-from urllib import response
 import pandas as pd
 import yfinance as yf
 import datetime as datetime
