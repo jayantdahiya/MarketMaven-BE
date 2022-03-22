@@ -1,4 +1,4 @@
-FROM continuumio/miniconda3
+FROM --platform=linux/arm64 continuumio/miniconda3
 
 WORKDIR /
 
@@ -13,13 +13,13 @@ RUN pip install \
         yfinance \
         pandas 
     
-
+EXPOSE $PORT
 # COPY main.py boot.sh /
 # RUN chmod +x boot.sh
 # ENTRYPOINT ["python3", "main.py"]
-EXPOSE 8000
-COPY api.py main.py /
-CMD python main.py
+COPY api.py  /
+# CMD uvicorn api:app --host 0.0.0.0 --port $PORT
+CMD gunicorn -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT api:app
 
 
 # FROM python:3.8-slim-buster
