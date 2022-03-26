@@ -1,4 +1,4 @@
-pystan==2.19.1.1
+pystan
 
 fastapi==0.68.0
 gunicorn==20.1.0
