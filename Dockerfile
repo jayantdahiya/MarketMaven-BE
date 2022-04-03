@@ -1,26 +1,69 @@
-FROM --platform=linux/arm64 continuumio/miniconda3
+FROM --platform=linux/arm64 ubuntu
 
-WORKDIR /
+RUN apt update
+RUN apt-get install -y wget
 
-COPY environment.yml ./
-RUN conda env create -f environment.yml
-SHELL [ "conda", "run", "-n", "api", "/bin/bash", "-c" ]
-RUN echo "conda activate api" >> ~/.bashrc
-RUN conda install -c conda-forge prophet
-RUN pip install \
-        uvicorn \
-        fastapi \
-        yfinance \
-        pandas 
+RUN wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
+RUN ls
+RUN bash ./Miniconda3-latest-Linux_x86_64.sh
+
+RUN ls
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# FROM --platform=linux/arm64 continuumio/miniconda3
+# ARG port
+
+# USER root
+# COPY . .
+# WORKDIR /
+
+# ENV PORT=$port
+
+# RUN chgrp -R 0 /stock-predictor-api1 \
+#     && chmod -R g=u /stock-predictor-api1
+
+# EXPOSE $PORT
+
+# COPY environment.yml ./
+# RUN conda env create -f environment.yml
+# SHELL [ "conda", "run", "-n", "api", "/bin/bash", "-c" ]
+# RUN echo "conda activate api" >> ~/.bashrc
+# RUN conda install -c conda-forge \
+#                          prophet \
+#                          uvicorn \
+#                          fastapi \
+#                          yfinance \
+#                          pandas
+
+
     
 
-# COPY main.py boot.sh /
-# RUN chmod +x boot.sh
-# ENTRYPOINT ["python3", "main.py"]
-EXPOSE 8000
-COPY api.py  /
 # CMD uvicorn api:app --host 0.0.0.0 --port $PORT
-CMD gunicorn -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 api:app
+# CMD gunicorn -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT api:app
+# CMD gunicorn api:app -bind 0.0.0.0:$PORT --preload
+
+
+
+
+
+# -----------------------------------------------------------------------------------------------
+
+
+
 
 
 
