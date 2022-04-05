@@ -1,4 +1,4 @@
-FROM continuumio/miniconda3
+FROM --platform=arm64 continuumio/miniconda3
 
 WORKDIR /
 
@@ -11,7 +11,7 @@ RUN conda install -c conda-forge prophet
 COPY . . 
 
 
-CMD uvicorn app.api:app --reload --host 0.0.0.0 
+CMD uvicorn app.api:app --reload --host 0.0.0.0 --port $PORT
 
 
 
