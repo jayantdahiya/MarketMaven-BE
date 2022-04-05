@@ -1,1 +1,1 @@
-Heroku: %-3iDYNYZGc<yc*
+Stock-prediction project api
