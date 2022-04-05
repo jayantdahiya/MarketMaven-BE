@@ -1,13 +1,18 @@
-FROM --platform=linux/arm64 ubuntu
+FROM continuumio/miniconda3
 
-RUN apt update
-RUN apt-get install -y wget
+WORKDIR /
 
-RUN wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
-RUN ls
-RUN bash ./Miniconda3-latest-Linux_x86_64.sh
+RUN pip install numpy
+RUN pip install fastapi
+RUN pip install uvicorn
+RUN pip install yfinance
+RUN conda install -c conda-forge prophet
 
-RUN ls
+COPY . . 
+
+
+CMD uvicorn app.api:app --reload --host 0.0.0.0 
+
 
 
 
