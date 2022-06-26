@@ -1,3 +1,3 @@
 Stock-prediction project api
 
-GCloud hosted link: https://base-mzqhgu64aa-uc.a.run.app/docs
+GCloud hosted link: https://stock-api-mzqhgu64aa-uc.a.run.app
