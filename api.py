@@ -64,6 +64,10 @@ origins = [
     "localhost:8000",
     "localhost:3000",
     "http://localhost:3000",
+    "https://stock-predictor-react-fe.web.app/",
+    "https://stock-predictor-react-fe.web.app/Result",
+    "stock-predictor-react-fe.web.app/",
+    "stock-predictor-react-fe.web.app/Result"
 ]
 
 app.add_middleware(

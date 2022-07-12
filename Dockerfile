@@ -1,15 +1,15 @@
-FROM continuumio/miniconda3
+FROM tiangolo/uvicorn-gunicorn-fastapi
 
 WORKDIR /
 
-RUN pip install numpy
-RUN pip install fastapi
-RUN pip install gunicorn
-RUN pip install uvicorn
-RUN pip install yfinance
-RUN conda install -c conda-forge prophet
+COPY . .
 
-COPY . . 
+RUN pip3 install numpy
+RUN pip3 install prophet
+RUN pip3 install yfinance
+RUN pip3 install fastapi
+
+# COPY . . 
 
 EXPOSE $PORT
 
