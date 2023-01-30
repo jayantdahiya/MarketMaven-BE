@@ -1,0 +1,4 @@
+__pycache__
+lib
+deploy-commands.txt
+lambda_function.zip
