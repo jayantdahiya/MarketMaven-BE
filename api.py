@@ -15,7 +15,7 @@ from mangum import Mangum
 
 # start_date = '2015-10-10'
 
-# ticker = 'AAPL'
+# ticker = 'AAPL' 
 
 def predict(ticker, start_date):
     today = datetime.date.today()
