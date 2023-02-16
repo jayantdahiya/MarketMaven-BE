@@ -11,6 +11,6 @@ RUN pip3 install fastapi
 
 # COPY . . 
 
-EXPOSE $PORT
+EXPOSE 8000
 
-CMD gunicorn api:app --bind 0.0.0.0:$PORT --worker-class uvicorn.workers.UvicornWorker
+CMD gunicorn api:app --bind 0.0.0.0:8000 --worker-class uvicorn.workers.UvicornWorker

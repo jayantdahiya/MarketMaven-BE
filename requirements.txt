@@ -4,4 +4,3 @@ prophet
 fastapi
 pydantic
 uvicorn
-mangum

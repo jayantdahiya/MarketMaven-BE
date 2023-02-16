@@ -7,7 +7,6 @@ from time import strftime
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from mangum import Mangum
 
 
 # today = datetime.date.today()
@@ -59,7 +58,6 @@ def predict(ticker, start_date):
     return (output)
 
 app = FastAPI()
-handler = Mangum(app)
 
 origins = [
     "http://localhost:8000",
