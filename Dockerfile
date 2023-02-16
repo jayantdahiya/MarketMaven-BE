@@ -7,6 +7,7 @@ COPY . .
 RUN pip3 install numpy
 RUN pip3 install pandas
 RUN pip3 install stanpy
+RUN pip3 install cmdstanpy
 RUN pip3 install prophet
 RUN pip3 install yfinance
 RUN pip3 install fastapi
