@@ -1,6 +1,0 @@
-- heroku login
-- heroku container:login
-- docker build -t registry.heroku.com/young-lake-15251/web .
-- docker run --name fastapi-ml -e PORT=8008 -p 8008:8008 -d registry.heroku.com/young-lake-15251/web:latest
-- docker push registry.heroku.com/young-lake-15251/web
-- heroku container:release -a young-lake-15251 web
