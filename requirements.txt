@@ -4,3 +4,4 @@ prophet
 fastapi
 pydantic
 uvicorn
+gunicorn
