@@ -9,24 +9,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 
-# today = datetime.date.today()
-# end_date = today.strftime("%Y-%m-%d")
-
-# start_date = '2015-10-10'
-
-# ticker = 'AAPL' 
-
 def predict(ticker, start_date):
     today = datetime.date.today()
     end_date = today.strftime("%Y-%m-%d")
-    data = yf.download(ticker, start_date, end_date)
+    data = yf.yf.Ticker(ticker).history(period='max', interval='1d')
     
     df_forecast = data.copy()
     df_forecast.reset_index(inplace=True)
     df_forecast["ds"] = df_forecast["Date"]
     df_forecast["y"] = df_forecast["Adj Close"]
     df_forecast = df_forecast[["ds","y"]]
-    df_forecast 
+    df_forecast
     
     model = Prophet()
     model.fit(df_forecast)
@@ -39,23 +32,22 @@ def predict(ticker, start_date):
     forecast = model.predict(df_pred)
     prediction_list = forecast.tail(7).to_dict("records")
     
-    output = {}
+    # output = {}
 
-    i=0
+    # i=0
 
-    for data in prediction_list:
+    # for data in prediction_list:
 
-        date = data["ds"].strftime("%Y-%m-%d")
-        output [i]= {
-            "date" : date,
-            "price" : data["trend"]
-        } 
-        i = i+1
+    #     date = data["ds"].strftime("%Y-%m-%d")
+    #     output [i]= {
+    #         "date" : date,
+    #         "price" : data["trend"]
+    #     } 
+    #     i = i+1
         
-        # output[date] = data["trend"]
     
     
-    return (output)
+    return (prediction_list)
 
 app = FastAPI()
 
