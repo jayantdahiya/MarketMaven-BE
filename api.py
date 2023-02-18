@@ -17,7 +17,7 @@ def predict(ticker, start_date):
     df_forecast = data.copy()
     df_forecast.reset_index(inplace=True)
     df_forecast["ds"] = df_forecast["Date"]
-    df_forecast["y"] = df_forecast["Adj Close"]
+    df_forecast["y"] = df_forecast["Close"]
     df_forecast = df_forecast[["ds","y"]]
     df_forecast
     
