@@ -12,7 +12,7 @@ from pydantic import BaseModel
 def predict(ticker, start_date):
     today = datetime.date.today()
     end_date = today.strftime("%Y-%m-%d")
-    data = yf.yf.Ticker(ticker).history(period='max', interval='1d')
+    data = yf.Ticker(ticker).history(period='max', interval='1d')
     
     df_forecast = data.copy()
     df_forecast.reset_index(inplace=True)
