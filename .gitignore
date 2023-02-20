@@ -1,6 +1,3 @@
 __pycache__
-lib
-deploy-commands.txt
-lambda_function.zip
-
-.space
+.DS_store
+.DS_Store
