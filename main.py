@@ -7,14 +7,11 @@ from Models.Prophet import pred as Prophet_Forecast
 app = FastAPI()
 
 origins = [
+    "http://localhost.tiangolo.com",
+    "https://localhost.tiangolo.com",
+    "http://localhost",
+    "http://localhost:8080",
     "http://localhost:8000",
-    "localhost:8000",
-    "http://127.0.0.1:5173/result",
-    "http://127.0.0.1:5173/",
-    "https://stock-predictor-react-fe.web.app/",
-    "https://stock-predictor-react-fe.web.app/Result",
-    "stock-predictor-react-fe.web.app/",
-    "stock-predictor-react-fe.web.app/Result",
     "*"
 ]
 
@@ -23,7 +20,7 @@ app.add_middleware(
     allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"]
+    allow_headers=["*"],
 )
 
 
