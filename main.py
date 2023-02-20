@@ -9,6 +9,8 @@ app = FastAPI()
 origins = [
     "http://localhost:8000",
     "localhost:8000",
+    "http://127.0.0.1:5173/result",
+    "http://127.0.0.1:5173/",
     "https://stock-predictor-react-fe.web.app/",
     "https://stock-predictor-react-fe.web.app/Result",
     "stock-predictor-react-fe.web.app/",
@@ -34,6 +36,6 @@ def index():
     return {'Stock Predictor API'}
 
 # This is the route that is called when the user wants the Prophet model
-@app.get('/Prophet/{ticker}')
+@app.get('/Prophet')
 def Prophet(ticker: str):
     return Prophet_Forecast(ticker)
