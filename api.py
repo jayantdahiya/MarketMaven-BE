@@ -14,7 +14,8 @@ origins = [
     "http://localhost:8000",
     "https://localhost:8000",
     "https://0.0.0.0:8000",
-    "https://5173-jayantdahiy-stockpredic-fmaagmgmu8d.ws-us87.gitpod.io"
+    "*",
+    "0.0.0.0/0"
 ]
 
 # app.add_middleware(
