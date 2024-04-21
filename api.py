@@ -18,15 +18,6 @@ origins = [
     "0.0.0.0/0"
 ]
 
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=origins,
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
-
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -46,6 +37,6 @@ def index():
     return {'Stock Predictor API'}
 
 # This is the route that is called when the user wants the Prophet model
-@app.get('/Prophet')
+@app.get('/prophet')
 def Prophet(ticker: str):
     return Prophet_Forecast(ticker)
