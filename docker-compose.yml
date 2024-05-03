@@ -1,0 +1,10 @@
+version: "3.8"
+
+services:
+  miniconda:
+    build:.
+    volumes:
+      -.:/data
+    ports:
+      - 8000:8000
+    command: python3 main.py
