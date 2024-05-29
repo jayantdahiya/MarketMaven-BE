@@ -1,31 +1,21 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from Models.Prophet import pred as Prophet_Forecast
 
+import logging
+import os
+from supabase import create_client, Client
+from dotenv import load_dotenv
+
+load_dotenv()
+
 app = FastAPI()
 
-origins = [
-    "http://localhost.tiangolo.com",
-    "https://localhost.tiangolo.com",
-    "http://localhost",
-    "http://localhost:8080",
-    "http://localhost:8000",
-    "https://localhost:8000",
-    "https://0.0.0.0:8000",
-    "*",
-    "0.0.0.0/0"
-]
+url: str = os.environ.get("SUPABASE_URL")
+key: str = os.environ.get("SUPABASE_KEY")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"]
-    )
+supabase: Client = create_client(url, key)
 
 
 class StockIn(BaseModel):
@@ -40,3 +30,8 @@ def index():
 @app.get('/prophet')
 def Prophet(ticker: str):
     return Prophet_Forecast(ticker)
+
+@app.get('/tickers')
+def get_tickers():
+    tickers = supabase.table('tickers').select('*').execute().data
+    return tickers
