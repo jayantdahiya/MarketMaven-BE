@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
 
 from Models.Prophet import pred as Prophet_Forecast
 
@@ -15,16 +16,32 @@ load_dotenv()
 
 app = FastAPI()
 
+# Configure CORS
+origins = [
+    "http://localhost",
+    "http://localhost:8000",
+    "http://localhost:3000",  # Add your frontend domain here
+    # Add other origins as needed
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  # Allows access from these origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all HTTP methods
+    allow_headers=["*"],  # Allows all headers
+)
+
 url: str = os.environ.get("SUPABASE_URL")
 key: str = os.environ.get("SUPABASE_KEY")
 
 supabase: Client = create_client(url, key)
 
 redisDB = redis.Redis(
-  host= os.environ.get("REDIS_HOST"),
-  port=6379,
-  password= os.environ.get("REDIS_PASSWORD"),
-  ssl=True
+    host=os.environ.get("REDIS_HOST"),
+    port=6379,
+    password=os.environ.get("REDIS_PASSWORD"),
+    ssl=True
 )
 
 
@@ -40,19 +57,18 @@ class SignUpRequest(BaseModel):
     password: str
 
 
-
 @app.get('/')
 def index():
     return {'Stock Predictor API'}
 
-# This is the route that is called when the user wants the Prophet model
+
 @app.get('/prophet')
 def Prophet(ticker: str):
     return Prophet_Forecast(ticker)
 
+
 @app.get('/tickers')
 async def get_tickers():
-    
     try:
         cached_tickers = redisDB.get('tickers')
         
@@ -75,8 +91,8 @@ async def get_tickers():
 @app.post('/signup')
 async def signup(signup_request: SignUpRequest):
     credentials = {
-    "email": signup_request.email,
-    "password": signup_request.password
+        "email": signup_request.email,
+        "password": signup_request.password
     }
     user = supabase.auth.sign_up(credentials)
     
@@ -85,17 +101,16 @@ async def signup(signup_request: SignUpRequest):
 
 @app.post('/login')
 async def login(login_request: LoginRequest):
-    
     credentials = {
-        "email" : login_request.email,
-        "password" : login_request.password
+        "email": login_request.email,
+        "password": login_request.password
     }
-    
     try:
         user = supabase.auth.sign_in_with_password(credentials)
         return user
     except Exception as e:
         raise HTTPException(status_code=401, detail="Invalid credentials") from e
+
 
 @app.get('/logout')
 async def logout():
