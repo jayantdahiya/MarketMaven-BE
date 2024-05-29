@@ -93,11 +93,9 @@ async def login(login_request: LoginRequest):
     
     try:
         user = supabase.auth.sign_in_with_password(credentials)
+        return user
     except Exception as e:
         raise HTTPException(status_code=401, detail="Invalid credentials") from e
-        return
-    
-    return user
 
 @app.get('/logout')
 async def logout():
