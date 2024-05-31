@@ -59,7 +59,7 @@ class SignUpRequest(BaseModel):
 
 @app.get('/')
 def index():
-    return {'Stock Predictor API'}
+    return {'message': 'Welcome to the Market Maven API'}
 
 
 @app.get('/prophet')
