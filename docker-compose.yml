@@ -2,9 +2,14 @@ version: "3.8"
 
 services:
   miniconda:
-    build:.
+    build: .
     volumes:
-      -.:/data
+      - .:/data
     ports:
-      - 8000:8000
+      - "8016:8000"
     command: python3 main.py
+    networks:
+      - market-maven
+
+networks:
+  market-maven:
