@@ -16,20 +16,18 @@ load_dotenv()
 
 app = FastAPI()
 
-# Configure CORS
 origins = [
     "http://localhost",
     "http://localhost:8000",
-    "http://localhost:3000",  # Add your frontend domain here
-    # Add other origins as needed
+    "http://localhost:3000",
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # Allows access from these origins
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all HTTP methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 url: str = os.environ.get("SUPABASE_URL")
@@ -37,6 +35,7 @@ key: str = os.environ.get("SUPABASE_KEY")
 
 supabase: Client = create_client(url, key)
 
+# Redis configuration
 redisDB = redis.Redis(
     host=os.environ.get("REDIS_HOST"),
     port=6379,
@@ -71,21 +70,15 @@ def Prophet(ticker: str):
 async def get_tickers():
     try:
         cached_tickers = redisDB.get('tickers')
-        
         if cached_tickers:
-            logging.error("Using cached tickers")
-            return cached_tickers
-        
-        logging.error("Fetching tickers from supabase")
+            return json.loads(cached_tickers)
+
         tickers = supabase.table('tickers').select('*').execute().data
-        
-        logging.error("Caching tickers")
         redisDB.set('tickers', json.dumps(tickers))
-        
+
         return tickers
-    except Exception as e:
-        logging.error(f"Failed to fetch tickers: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch tickers") from e
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to fetch tickers")
 
 
 @app.post('/signup')
