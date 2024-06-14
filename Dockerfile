@@ -1,23 +1,22 @@
+# Dockerfile
+
 # Use the official Miniconda image
 FROM continuumio/miniconda3
 
-# Set the working directory
-# WORKDIR /api
+# Set the working directory inside the container
+WORKDIR /app
 
-# Copy only the environment files first
-COPY environment.yml requirements.txt ./
-
-# Install pip packages
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Install conda packages
-RUN conda env update --file environment.yml
-
-# Copy the rest of the application files
+# Copy all files from the current directory to /app in the container
 COPY . .
+
+# Install prophet using conda from conda-forge channel
+RUN conda install -c conda-forge prophet -y
+
+# Install pip packages based on requirements.txt
+RUN pip install -r requirements.txt
 
 # Expose the port used by your application
 EXPOSE 8000
 
-# Run the application
-CMD ["uvicorn", "api:app", "--port", "8000", "--reload"]
+# Specify the command to run your application
+CMD cd api && python main.py
