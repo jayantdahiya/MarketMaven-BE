@@ -1,6 +1,7 @@
 """
 MSE, Sharpe surrogate, and composite forecast loss (MSE + λ·Sharpe with warmup).
 """
+
 import logging
 
 import torch
@@ -31,7 +32,7 @@ class SharpeSurrogateLoss(nn.Module):
         r_s = torch.tanh(y_hat / self.temperature) * y_true
         mean_r = r_s.mean()
         std_r = r_s.std() + 1e-8
-        sharpe = (mean_r / std_r) * (self.annualization ** 0.5)
+        sharpe = (mean_r / std_r) * (self.annualization**0.5)
         return -sharpe
 
 
@@ -49,7 +50,9 @@ class CompositeForecastLoss(nn.Module):
         self.lambda_sharpe = lambda_sharpe
         self.warmup_epochs = warmup_epochs
         self.mse = MSELossWrapper()
-        self.sharpe = SharpeSurrogateLoss(temperature=temperature, annualization=annualization)
+        self.sharpe = SharpeSurrogateLoss(
+            temperature=temperature, annualization=annualization
+        )
 
     def forward(
         self,
@@ -58,7 +61,7 @@ class CompositeForecastLoss(nn.Module):
         current_epoch: int = 0,
     ) -> torch.Tensor:
         if torch.isnan(y_hat).any() or torch.isnan(y_true).any():
-            logger.warning("NaN in y_hat or y_true; using MSE only for this batch")
+            logger.warning('NaN in y_hat or y_true; using MSE only for this batch')
             return self.mse(y_hat, y_true)
         l_mse = self.mse(y_hat, y_true)
         if current_epoch < self.warmup_epochs:

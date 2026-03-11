@@ -1,4 +1,5 @@
 """Unit tests for LSTMBaseline."""
+
 import pytest
 import torch
 
@@ -26,5 +27,5 @@ def test_lstm_variable_batch_size(sample_lstm_model):
 
 
 def test_lstm_input_dim_raises():
-    with pytest.raises(ValueError, match="input_dim"):
+    with pytest.raises(ValueError, match='input_dim'):
         LSTMBaseline(input_dim=0)

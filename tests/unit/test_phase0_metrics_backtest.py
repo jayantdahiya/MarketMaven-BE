@@ -1,8 +1,8 @@
 """Unit tests for metrics and backtest."""
-import numpy as np
-import pytest
 
-from api.training import metrics, backtest
+import numpy as np
+
+from api.training import backtest, metrics
 
 
 def test_sharpe_positive_for_positive_returns():
@@ -24,7 +24,7 @@ def test_backtest_cost_applied_on_position_change():
     ts = np.arange(3)
     bt = backtest.Backtester(transaction_cost_bps=5.0, slippage_bps=2.0)
     df = bt.run(pred, real, ts)
-    assert (df["cost"] > 0).any()
+    assert (df['cost'] > 0).any()
 
 
 def test_zero_variance_returns_sharpe_zero():

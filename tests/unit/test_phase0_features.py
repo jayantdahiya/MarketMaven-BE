@@ -1,7 +1,7 @@
 """Unit tests for technical features."""
+
 import numpy as np
 import pandas as pd
-import pytest
 
 from api.data import features
 
@@ -27,6 +27,15 @@ def test_calculate_macd_signal_length_match():
 
 
 def test_add_technical_features_columns_present(sample_daily_df):
-    expected_cols = ["close", "volume", "sma_15", "sma_45", "rsi_14", "macd", "macd_signal", "obv"]
+    expected_cols = [
+        'close',
+        'volume',
+        'sma_15',
+        'sma_45',
+        'rsi_14',
+        'macd',
+        'macd_signal',
+        'obv',
+    ]
     df = features.add_technical_features(sample_daily_df)
     assert set(expected_cols).issubset(set(df.columns))

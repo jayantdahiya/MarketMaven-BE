@@ -1,6 +1,7 @@
 """
 Auth request/response schemas.
 """
+
 from pydantic import BaseModel, EmailStr, Field
 
 

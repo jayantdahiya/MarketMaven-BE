@@ -1,6 +1,7 @@
 """
 Trainer: fit loop with validation, early stopping, gradient clipping, checkpointing.
 """
+
 import logging
 from pathlib import Path
 
@@ -30,11 +31,13 @@ class Trainer:
         self.device = torch.device(device) if isinstance(device, str) else device
         self.model.to(self.device)
         self.current_epoch = 0
-        self.train_cfg = cfg.get("training", {})
-        self.epochs = self.train_cfg.get("epochs", 40)
-        self.grad_clip = self.train_cfg.get("grad_clip_norm", 1.0)
-        self.patience = self.train_cfg.get("early_stopping_patience", 8)
-        self.checkpoints_dir = Path(cfg.get("paths", {}).get("checkpoints_dir", "artifacts/checkpoints/phase0"))
+        self.train_cfg = cfg.get('training', {})
+        self.epochs = self.train_cfg.get('epochs', 40)
+        self.grad_clip = self.train_cfg.get('grad_clip_norm', 1.0)
+        self.patience = self.train_cfg.get('early_stopping_patience', 8)
+        self.checkpoints_dir = Path(
+            cfg.get('paths', {}).get('checkpoints_dir', 'artifacts/checkpoints/phase0')
+        )
 
     def _train_epoch(self, loader: DataLoader) -> dict:
         self.model.train()
@@ -51,11 +54,13 @@ class Trainer:
             else:
                 loss = self.criterion(y_hat, y_true)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.grad_clip)
+            torch.nn.utils.clip_grad_norm_(
+                self.model.parameters(), max_norm=self.grad_clip
+            )
             self.optimizer.step()
             total_loss += loss.item() * x.size(0)
             n += x.size(0)
-        return {"loss": total_loss / n if n else 0.0}
+        return {'loss': total_loss / n if n else 0.0}
 
     def _validate_epoch(self, loader: DataLoader) -> dict:
         self.model.eval()
@@ -70,7 +75,9 @@ class Trainer:
                 y_true = y_true.to(self.device)
                 y_hat = self.model(x)
                 if isinstance(self.criterion, losses.CompositeForecastLoss):
-                    loss = self.criterion(y_hat, y_true, current_epoch=self.current_epoch)
+                    loss = self.criterion(
+                        y_hat, y_true, current_epoch=self.current_epoch
+                    )
                 else:
                     loss = self.criterion(y_hat, y_true)
                 total_loss += loss.item() * x.size(0)
@@ -80,9 +87,9 @@ class Trainer:
         y_pred = torch.cat(all_pred, dim=0).numpy().ravel()
         y_true_np = torch.cat(all_true, dim=0).numpy().ravel()
         return {
-            "loss": total_loss / n if n else 0.0,
-            "mae": metrics.mae(y_true_np, y_pred),
-            "rmse": metrics.rmse(y_true_np, y_pred),
+            'loss': total_loss / n if n else 0.0,
+            'mae': metrics.mae(y_true_np, y_pred),
+            'rmse': metrics.rmse(y_true_np, y_pred),
         }
 
     def fit(
@@ -95,22 +102,37 @@ class Trainer:
         scaler_state: dict,
     ) -> dict:
         """Run training; save best and last checkpoints. Return best_checkpoint_path and history."""
-        best_val_loss = float("inf")
+        best_val_loss = float('inf')
         patience_counter = 0
         history: list[dict] = []
-        best_path = ""
+        best_path = ''
         for epoch in range(self.epochs):
             self.current_epoch = epoch
             train_m = self._train_epoch(train_loader)
             val_m = self._validate_epoch(val_loader)
             if self.scheduler is not None:
-                self.scheduler.step(val_m["loss"])
-            history.append({"epoch": epoch, "train_loss": train_m["loss"], "val_loss": val_m["loss"], "val_mae": val_m["mae"], "val_rmse": val_m["rmse"]})
-            logger.info("Epoch %d train_loss=%.6f val_loss=%.6f val_mae=%.6f val_rmse=%.6f", epoch, train_m["loss"], val_m["loss"], val_m["mae"], val_m["rmse"])
-            if val_m["loss"] < best_val_loss:
-                best_val_loss = val_m["loss"]
+                self.scheduler.step(val_m['loss'])
+            history.append({
+                'epoch': epoch,
+                'train_loss': train_m['loss'],
+                'val_loss': val_m['loss'],
+                'val_mae': val_m['mae'],
+                'val_rmse': val_m['rmse'],
+            })
+            logger.info(
+                'Epoch %d train_loss=%.6f val_loss=%.6f val_mae=%.6f val_rmse=%.6f',
+                epoch,
+                train_m['loss'],
+                val_m['loss'],
+                val_m['mae'],
+                val_m['rmse'],
+            )
+            if val_m['loss'] < best_val_loss:
+                best_val_loss = val_m['loss']
                 patience_counter = 0
-                best_path = str(self.checkpoints_dir / run_id / f"best_epoch_{epoch:03d}.pt")
+                best_path = str(
+                    self.checkpoints_dir / run_id / f'best_epoch_{epoch:03d}.pt'
+                )
                 checkpointing.save_checkpoint(
                     best_path,
                     self.model,
@@ -121,14 +143,14 @@ class Trainer:
                     feature_cols,
                     scaler_path,
                     scaler_state,
-                    {"loss": val_m["loss"], "mae": val_m["mae"], "rmse": val_m["rmse"]},
+                    {'loss': val_m['loss'], 'mae': val_m['mae'], 'rmse': val_m['rmse']},
                 )
             else:
                 patience_counter += 1
                 if patience_counter >= self.patience:
-                    logger.info("Early stopping at epoch %d", epoch)
+                    logger.info('Early stopping at epoch %d', epoch)
                     break
-        last_path = str(self.checkpoints_dir / run_id / "last.pt")
+        last_path = str(self.checkpoints_dir / run_id / 'last.pt')
         checkpointing.save_checkpoint(
             last_path,
             self.model,
@@ -141,4 +163,4 @@ class Trainer:
             scaler_state,
             history[-1] if history else {},
         )
-        return {"best_checkpoint_path": best_path or last_path, "history": history}
+        return {'best_checkpoint_path': best_path or last_path, 'history': history}

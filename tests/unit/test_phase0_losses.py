@@ -1,8 +1,11 @@
 """Unit tests for losses."""
-import torch
-import pytest
 
-from api.training.losses import MSELossWrapper, SharpeSurrogateLoss, CompositeForecastLoss
+import torch
+
+from api.training.losses import (
+    CompositeForecastLoss,
+    MSELossWrapper,
+)
 
 
 def test_mse_loss_zero_on_perfect_prediction():

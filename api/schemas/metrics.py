@@ -1,6 +1,7 @@
 """
 Metrics response schema for GET /metrics/latest.
 """
+
 from pydantic import BaseModel
 
 

@@ -1,6 +1,7 @@
 """
 PyTorch Dataset for sliding-window sequences; no cross-asset windows.
 """
+
 import logging
 from typing import Any
 
@@ -26,7 +27,7 @@ class DailySequenceDataset(Dataset):
         seq_len: int,
         horizon: int = 1,
     ):
-        self.df = df.sort_values(["asset_id", "timestamp"]).reset_index(drop=True)
+        self.df = df.sort_values(['asset_id', 'timestamp']).reset_index(drop=True)
         self.feature_cols = feature_cols
         self.target_col = target_col
         self.seq_len = seq_len
@@ -36,20 +37,22 @@ class DailySequenceDataset(Dataset):
         self._build_indices()
 
     def _build_indices(self) -> None:
-        for asset_id, g in self.df.groupby("asset_id", sort=True):
+        for asset_id, g in self.df.groupby('asset_id', sort=True):
             # Use integer positions (iloc) in the full df for this group
             start_iloc = self.df.index.get_indexer(g.index)[0]
             n = len(g)
             if n < self.seq_len + self.horizon:
                 logger.warning(
-                    "Asset %s has %d rows < seq_len + horizon (%d), skipping",
-                    asset_id, n, self.seq_len + self.horizon,
+                    'Asset %s has %d rows < seq_len + horizon (%d), skipping',
+                    asset_id,
+                    n,
+                    self.seq_len + self.horizon,
                 )
                 continue
             for i in range(n - self.seq_len - self.horizon + 1):
                 self._indices.append((start_iloc + i, asset_id))
         if not self._indices:
-            raise ValueError("No valid windows: all assets too short or missing target")
+            raise ValueError('No valid windows: all assets too short or missing target')
 
     def __len__(self) -> int:
         return len(self._indices)
@@ -64,7 +67,7 @@ class DailySequenceDataset(Dataset):
             y_val = 0.0
         y = np.array([y_val], dtype=np.float32)
         meta: dict[str, Any] = {
-            "asset_id": asset_id,
-            "timestamp": str(block.iloc[-1]["timestamp"]),
+            'asset_id': asset_id,
+            'timestamp': str(block.iloc[-1]['timestamp']),
         }
         return torch.from_numpy(x), torch.from_numpy(y), meta

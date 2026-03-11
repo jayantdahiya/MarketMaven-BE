@@ -1,8 +1,9 @@
 """
 Technical feature engineering: SMA, RSI, MACD, OBV.
 """
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 
 
 def calculate_sma(close: pd.Series, window: int) -> pd.Series:
@@ -32,7 +33,9 @@ def calculate_macd(
     ema_short = close.ewm(span=short_window, adjust=False).mean()
     ema_long = close.ewm(span=long_window, adjust=False).mean()
     macd_line = (ema_short - ema_long).astype(np.float32)
-    signal_line = macd_line.ewm(span=signal_window, adjust=False).mean().astype(np.float32)
+    signal_line = (
+        macd_line.ewm(span=signal_window, adjust=False).mean().astype(np.float32)
+    )
     return macd_line, signal_line
 
 
@@ -49,25 +52,21 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     Expects columns: open, high, low, close, volume, asset_id.
     """
     out = df.copy()
-    if "volume" not in out.columns:
+    if 'volume' not in out.columns:
         raise KeyError("DataFrame must contain 'volume' column for feature engineering")
-    if "close" not in out.columns:
+    if 'close' not in out.columns:
         raise KeyError("DataFrame must contain 'close' column")
-    grouped = out.groupby("asset_id", group_keys=False)
-    out["sma_15"] = grouped["close"].transform(lambda s: calculate_sma(s, 15))
-    out["sma_45"] = grouped["close"].transform(lambda s: calculate_sma(s, 45))
-    out["rsi_14"] = grouped["close"].transform(lambda s: calculate_rsi(s, 14))
-    macd_signal = grouped["close"].transform(
-        lambda s: calculate_macd(s, 12, 26, 9)[1]
-    )
-    out["macd"] = grouped["close"].transform(
-        lambda s: calculate_macd(s, 12, 26, 9)[0]
-    )
-    out["macd_signal"] = macd_signal
+    grouped = out.groupby('asset_id', group_keys=False)
+    out['sma_15'] = grouped['close'].transform(lambda s: calculate_sma(s, 15))
+    out['sma_45'] = grouped['close'].transform(lambda s: calculate_sma(s, 45))
+    out['rsi_14'] = grouped['close'].transform(lambda s: calculate_rsi(s, 14))
+    macd_signal = grouped['close'].transform(lambda s: calculate_macd(s, 12, 26, 9)[1])
+    out['macd'] = grouped['close'].transform(lambda s: calculate_macd(s, 12, 26, 9)[0])
+    out['macd_signal'] = macd_signal
     obv_parts = []
-    for aid, g in grouped:
-        obv_ser = calculate_obv(g["close"], g["volume"])
+    for _aid, g in grouped:
+        obv_ser = calculate_obv(g['close'], g['volume'])
         obv_ser.index = g.index
         obv_parts.append(obv_ser)
-    out["obv"] = pd.concat(obv_parts)
+    out['obv'] = pd.concat(obv_parts)
     return out
