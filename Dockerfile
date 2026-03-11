@@ -1,22 +1,19 @@
 # Use the official Miniconda image
 FROM continuumio/miniconda3
 
-# Set the working directory
-# WORKDIR /app
+WORKDIR /app
 
-# Copy only the environment files first
+# Copy project files
 COPY . .
 
 # Install pip packages
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install conda packages
-RUN conda env update --file environment.yml
+# Copy config for runtime
+COPY config/ config/
 
 # Expose the port used by your application
 EXPOSE 8000
 
-CMD ["cd", "api"]
-
-# Run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the application — canonical entrypoint api.app:app
+CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "8000"]

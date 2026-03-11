@@ -1,5 +1,24 @@
-supabase
-pandas
-yfinance
-redis
-fastapi
+# Phase 0 — runtime and API
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-dotenv>=1.0.0
+pydantic[email]>=2.9.0
+supabase>=2.0.0
+redis>=5.0.0
+
+# Data and config
+pandas>=2.0.0
+numpy>=1.24.0
+yfinance>=0.2.0
+pyarrow>=17.0.0
+pyyaml>=6.0
+
+# ML
+torch>=2.2.0
+scikit-learn>=1.5.0
+joblib>=1.4.0
+prophet>=1.1.0
+
+# Testing
+pytest>=8.3.0
+httpx>=0.27.0

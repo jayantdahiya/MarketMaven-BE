@@ -1,54 +1,51 @@
 # MarketMaven-BE
 
-<p>
-This repository contains the backend code for the forecasting application. The backend is responsible for receiving requests from the frontend and returning the forecasted results.
-</p>
+Backend for the Market Maven forecasting application: config-driven LSTM baseline (Phase 0), PyTorch, date-based train/val/test splits, and FastAPI.
 
 ## Architecture
 
-<p>The backend is designed to work with the following architecture:</p>
+- Frontend sends requests to the backend (e.g. via Cloudflare Tunnel / NGINX).
+- FastAPI serves the API; entrypoint is `api.app:app`.
+- Daily forecasts use a trained LSTM or legacy Prophet; no training at request time.
 
-1. The frontend sends requests to the backend through Cloudflare Tunnel using HTTPS.
-2. The NGINX Proxy (on AWS instance) receives the requests and triggers the Gunicorn services (FastAPI).
-3. FastAPI routes the request to the main.py file.
-4. The main.py file receives the ticker name and model name as input.
-5. The code uses yFinance to fetch the historical data of the ticker to train the model.
-6. The model forecasts the result for 10 days from the current date.
-7. The result is returned back in the JSON format to the frontend.
-
-## Installation and Setup
+## Installation and setup
 
 1. Clone this repository.
-2. Install the required packages using `pip install -r requirements.txt`
-3. Start the Gunicorn server using `gunicorn main:app`
-4. Open `localhost:3000/docs` on your browser to try it yourself.
+2. Install dependencies:
+   - **With uv:** `uv sync`
+   - **With pip:** `pip install -r requirements.txt`
+3. Copy `.env.example` to `.env` and set `SUPABASE_URL`, `SUPABASE_KEY`, and optionally `REDIS_*` if using tickers cache.
 
-## Usage
+## Running the API
 
-Send a POST request to the endpoint with the following JSON payload:
-
-```json
-{ 
-   "ticker": "<ticker_name>",
-   "model": "<model_name>"
-}
+```bash
+uv run uvicorn api.app:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Where `<ticker_name>` is the name of the stock ticker and `<model_name>` is the name of the forecasting model.
+Or with pip:
 
-The backend will respond with a JSON object containing the forecasted results for the next 10 days. The format of the response is as follows:
-
-```json
-{
-    "ticker": "<ticker_name>",
-    "model": "<model_name>",
-    "forecast": [
-        {
-            "date": "<date>",
-            "value": "<value>"
-        },
-        ...
-    ]
-}
+```bash
+uvicorn api.app:app --host 0.0.0.0 --port 8000
 ```
-Where `<date>` is the date of the forecasted value and `<value>` is the forecasted value for that date.
+
+Open `http://localhost:8000/docs` for the OpenAPI UI.
+
+## Main endpoints
+
+- **POST /forecast/daily** — Request body: `asset_id`, `horizon_days` (1, 5, or 10), `model` (`lstm_baseline` or `prophet`), optional `as_of_date`. Returns predicted returns and signals.
+- **GET /prophet?ticker=...** — Legacy Prophet forecast for the given ticker.
+- **GET /**, **/signup**, **/login**, **/logout**, **GET /tickers**, **GET /metrics/latest** — As implemented in the app.
+
+## Scripts (Phase 0)
+
+- **Fetch raw data:** `uv run python scripts/fetch_market_data.py --config config/phase_0.yaml` → writes `artifacts/data/phase0/raw_daily.parquet`
+- **Train:** `uv run python scripts/train.py --config config/phase_0.yaml` (optional `--seed N` for a single seed)
+- **Evaluate:** `uv run python scripts/evaluate.py --config config/phase_0.yaml --checkpoint <path>` → writes reports under `artifacts/reports/phase0/`
+
+## Docker
+
+```bash
+docker compose up --build
+```
+
+Uses `api.app:app` on port 8000; mounts `./config` and `./artifacts`.

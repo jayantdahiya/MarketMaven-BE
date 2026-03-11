@@ -1,0 +1,20 @@
+project:
+  name: market-maven
+
+paths:
+  data_dir: artifacts/data
+  checkpoints_dir: artifacts/checkpoints
+  reports_dir: artifacts/reports
+
+api:
+  host: "0.0.0.0"
+  port: 8000
+  reload: true
+  allowed_origins:
+    - "http://localhost"
+    - "http://localhost:3000"
+    - "http://localhost:8000"
+
+evaluation:
+  annualization_factor: 252
+  signal_threshold: 0.0

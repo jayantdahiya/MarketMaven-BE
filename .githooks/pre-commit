@@ -1,0 +1,23 @@
+#!/bin/sh
+# Pre-commit: run ruff on staged Python files.
+# Use: git config core.hooksPath .githooks
+
+set -e
+
+STAGED_PY=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.py$' || true)
+[ -z "$STAGED_PY" ] && exit 0
+
+echo "Running ruff on staged Python files..."
+for f in $STAGED_PY; do
+  [ -f "$f" ] || continue
+  uv run ruff check "$f" --fix
+  uv run ruff format "$f"
+  git add "$f"
+done
+
+# Final check: fail commit if any violations remain (only on existing files)
+EXISTING=""
+for f in $STAGED_PY; do [ -f "$f" ] && EXISTING="$EXISTING $f"; done
+[ -z "$EXISTING" ] && exit 0
+uv run ruff check $EXISTING
+uv run ruff format --check $EXISTING
