@@ -1,5 +1,6 @@
 """
-MSE, Sharpe surrogate, and composite forecast loss (MSE + λ·Sharpe with warmup).
+MSE, Sharpe surrogate (batch-level and rolling-window), and composite
+forecast loss (MSE + λ·Sharpe with warmup).
 """
 
 import logging
@@ -36,8 +37,59 @@ class SharpeSurrogateLoss(nn.Module):
         return -sharpe
 
 
+class RollingSharpeSurrogateLoss(nn.Module):
+    """Rolling-window Sharpe surrogate for Phase 2.
+
+    Instead of computing a single Sharpe ratio over the whole batch, this
+    variant computes the negative Sharpe ratio within a rolling window of
+    *window* samples and averages the results.  When the batch is smaller
+    than the window, it falls back to the batch-level computation.
+
+    Args:
+        window: Number of samples in each rolling window.
+        temperature: Scaling temperature for ``tanh`` position sizing.
+        annualization: Trading-days-per-year factor for annualisation.
+    """
+
+    def __init__(
+        self,
+        window: int = 20,
+        temperature: float = 0.02,
+        annualization: int = 252,
+    ):
+        super().__init__()
+        self.window = window
+        self.temperature = temperature
+        self.annualization = annualization
+
+    def forward(self, y_hat: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+        r_s = torch.tanh(y_hat / self.temperature) * y_true
+        r_flat = r_s.reshape(-1)
+        N = r_flat.shape[0]
+
+        if self.window > N:
+            mean_r = r_flat.mean()
+            std_r = r_flat.std() + 1e-8
+            return -(mean_r / std_r) * (self.annualization**0.5)
+
+        # Rolling-window Sharpe: average across windows
+        sharpes: list[torch.Tensor] = []
+        for start in range(0, N - self.window + 1, self.window):
+            chunk = r_flat[start : start + self.window]
+            mean_c = chunk.mean()
+            std_c = chunk.std() + 1e-8
+            sharpes.append(mean_c / std_c)
+
+        avg_sharpe = torch.stack(sharpes).mean()
+        return -avg_sharpe * (self.annualization**0.5)
+
+
 class CompositeForecastLoss(nn.Module):
-    """MSE + λ·Sharpe surrogate; MSE-only for first warmup_epochs."""
+    """MSE + λ·Sharpe surrogate; MSE-only for first warmup_epochs.
+
+    When *sharpe_window* > 0 the rolling-window variant is used; otherwise
+    the original batch-level ``SharpeSurrogateLoss`` is used.
+    """
 
     def __init__(
         self,
@@ -45,14 +97,22 @@ class CompositeForecastLoss(nn.Module):
         temperature: float = 0.02,
         warmup_epochs: int = 3,
         annualization: int = 252,
+        sharpe_window: int = 0,
     ):
         super().__init__()
         self.lambda_sharpe = lambda_sharpe
         self.warmup_epochs = warmup_epochs
         self.mse = MSELossWrapper()
-        self.sharpe = SharpeSurrogateLoss(
-            temperature=temperature, annualization=annualization
-        )
+        if sharpe_window > 0:
+            self.sharpe: nn.Module = RollingSharpeSurrogateLoss(
+                window=sharpe_window,
+                temperature=temperature,
+                annualization=annualization,
+            )
+        else:
+            self.sharpe = SharpeSurrogateLoss(
+                temperature=temperature, annualization=annualization
+            )
 
     def forward(
         self,

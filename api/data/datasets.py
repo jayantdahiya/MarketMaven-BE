@@ -17,6 +17,11 @@ class DailySequenceDataset(Dataset):
     """
     Yields (x: [seq_len, F], y: [1], meta) per valid window.
     Windows do not cross asset boundaries. Data must be pre-scaled.
+
+    When *asset_to_index* is provided the ``meta`` dict includes an
+    ``asset_index`` key (integer) suitable for graph-context look-ups.
+    When *graph_context* is provided (a ``[A, G]`` tensor) it is included
+    in the ``meta`` dict so the training loop can pass it to the model.
     """
 
     def __init__(
@@ -26,12 +31,16 @@ class DailySequenceDataset(Dataset):
         target_col: str,
         seq_len: int,
         horizon: int = 1,
+        asset_to_index: dict[str, int] | None = None,
+        graph_context: torch.Tensor | None = None,
     ):
         self.df = df.sort_values(['asset_id', 'timestamp']).reset_index(drop=True)
         self.feature_cols = feature_cols
         self.target_col = target_col
         self.seq_len = seq_len
         self.horizon = horizon
+        self.asset_to_index = asset_to_index or {}
+        self.graph_context = graph_context
         self._indices: list[tuple[int, int]] = []  # (start_row, asset_id_key)
         self._asset_rows: dict[str, np.ndarray] = {}
         self._build_indices()
@@ -70,4 +79,9 @@ class DailySequenceDataset(Dataset):
             'asset_id': asset_id,
             'timestamp': str(block.iloc[-1]['timestamp']),
         }
+        # Phase 2: include asset_index and graph_context when available
+        if self.asset_to_index:
+            meta['asset_index'] = self.asset_to_index.get(str(asset_id), 0)
+        if self.graph_context is not None:
+            meta['graph_context'] = self.graph_context
         return torch.from_numpy(x), torch.from_numpy(y), meta

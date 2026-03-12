@@ -24,6 +24,12 @@ def test_train_one_epoch_produces_checkpoint(
     phase0_cfg['paths']['checkpoints_dir'] = str(tmp_artifact_dir / 'checkpoints')
     phase0_cfg['training']['epochs'] = 1
     phase0_cfg['training']['seeds'] = [42]
+    phase0_cfg['training']['early_stopping_patience'] = 10
+    phase0_cfg.setdefault('logging', {})['experiment_tracker'] = 'none'
+    # sample_daily_df spans 2020-01-01 → ~2021-11-30; adjust split dates
+    phase0_cfg['data']['split']['train_end'] = '2021-03-31'
+    phase0_cfg['data']['split']['val_end'] = '2021-07-31'
+    phase0_cfg['data']['split']['test_end'] = '2021-12-31'
     pipeline = DataPipeline(phase0_cfg)
     loaders = pipeline.build_dataloaders(data_path=str(data_path))
     model = create_model('lstm_baseline', phase0_cfg.get('model', {}))

@@ -14,7 +14,7 @@ async def forecast_daily(
     req: DailyForecastRequest, request: Request
 ) -> DailyForecastResponse:
     service = request.app.state.forecast_service
-    if req.model not in ('lstm_baseline', 'prophet'):
+    if req.model not in ('lstm_baseline', 'cnn_transformer', 'mamba_ssm', 'prophet'):
         raise HTTPException(
             status_code=400,
             detail={'code': 'invalid_model', 'message': f'Unknown model: {req.model}'},

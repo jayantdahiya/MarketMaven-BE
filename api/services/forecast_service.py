@@ -27,6 +27,7 @@ class ForecastService:
         self.config = config or {}
         self._model_cache: dict[str, torch.nn.Module] = {}
         self._scaler_cache: dict[str, FeatureScaler] = {}
+        self._graph_context_cache: dict[str, tuple[torch.Tensor, dict[str, int]]] = {}
         self._pipeline: DataPipeline | None = None
         paths = self.config.get('paths', {})
         self.checkpoints_dir = Path(
@@ -40,6 +41,24 @@ class ForecastService:
             self._pipeline = DataPipeline(self.config)
         return self._pipeline
 
+    def _resolve_checkpoint_dir(self, model_name: str) -> Path:
+        """Return the checkpoint directory for the given model.
+
+        Falls back to the configured checkpoints_dir when there is no per-model
+        override in config['model_checkpoints'].  The override map lets callers
+        deploy multiple models simultaneously without changing the active config.
+
+        Example config entry::
+
+            model_checkpoints:
+              cnn_transformer: artifacts/checkpoints/phase1
+              lstm_baseline:   artifacts/checkpoints/phase0
+        """
+        overrides: dict = self.config.get('model_checkpoints', {})
+        if model_name in overrides:
+            return Path(overrides[model_name])
+        return self.checkpoints_dir
+
     def _load_model(self, model_name: str) -> torch.nn.Module | None:
         if model_name in self._model_cache:
             return self._model_cache.get(model_name)
@@ -47,7 +66,7 @@ class ForecastService:
             return None
         model_cfg = self.config.get('model', {})
         model = create_model(model_name, model_cfg)
-        ckpt_dir = self.checkpoints_dir
+        ckpt_dir = self._resolve_checkpoint_dir(model_name)
         if not ckpt_dir.exists():
             raise FileNotFoundError(f'Checkpoint dir not found: {ckpt_dir}')
         best_pt = None
@@ -95,8 +114,18 @@ class ForecastService:
         except Exception as e:
             raise RuntimeError(f'Could not build inference window: {e}') from e
         x = torch.from_numpy(window).unsqueeze(0).float()  # [1, T, F]
+
+        # Build graph-context kwargs for Mamba models
+        model_kwargs: dict = {}
+        graph_enabled = self.config.get('graph', {}).get('enabled', False)
+        if req.model == 'mamba_ssm' and graph_enabled:
+            gc, asset_to_index = self._get_graph_context(req.model, pipeline)
+            asset_idx = asset_to_index.get(req.asset_id, 0)
+            model_kwargs['asset_index'] = torch.tensor([asset_idx], dtype=torch.long)
+            model_kwargs['graph_context'] = gc
+
         with torch.no_grad():
-            y_hat = model(x)
+            y_hat = model(x, **model_kwargs)
         pred_return = y_hat.item()
         signal, confidence = self._build_signal(pred_return)
         as_of = req.as_of_date or date.today()
@@ -115,6 +144,27 @@ class ForecastService:
             generated_at=datetime.utcnow(),
             predictions=[point],
         )
+
+    def _get_graph_context(
+        self, model_name: str, pipeline: DataPipeline
+    ) -> tuple[torch.Tensor, dict[str, int]]:
+        """Return cached graph context or compute fresh from pipeline data."""
+        if model_name in self._graph_context_cache:
+            return self._graph_context_cache[model_name]
+        # Compute from training data if available
+        if pipeline._train_df is not None:
+            gc, asset_to_index = pipeline.build_graph_context(pipeline._train_df)
+        else:
+            # Fallback: build a minimal graph context from config assets
+            assets = sorted(
+                self.config.get('data', {}).get(
+                    'assets', ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'SPY']
+                )
+            )
+            asset_to_index = {a: i for i, a in enumerate(assets)}
+            gc = torch.zeros(len(assets), 3)
+        self._graph_context_cache[model_name] = (gc, asset_to_index)
+        return gc, asset_to_index
 
     def _predict_prophet(self, req: DailyForecastRequest) -> DailyForecastResponse:
         try:

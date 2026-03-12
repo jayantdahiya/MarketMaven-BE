@@ -1,0 +1,89 @@
+_base_: config/base.yaml
+
+project:
+  name: market-maven
+  phase: 1
+
+paths:
+  data_dir: artifacts/data/phase0   # reuse Phase 0 data — no new modalities
+  checkpoints_dir: artifacts/checkpoints/phase1
+  reports_dir: artifacts/reports/phase1
+
+data:
+  source: yfinance
+  assets: [AAPL, MSFT, GOOGL, AMZN, SPY]
+  start_date: "2010-01-01"
+  end_date: "2025-12-31"
+  interval: "1d"
+  seq_len: 60
+  horizon_days: 1
+  feature_cols: [close, volume, sma_15, sma_45, rsi_14, macd, macd_signal, obv]
+  target_col: log_return_1d
+  target_horizons: [1]
+  direction_threshold: 0.0
+  split:
+    train_end: "2021-12-31"
+    val_end: "2023-12-31"
+    test_end: "2025-12-31"
+  normalization:
+    mode: per_asset_zscore
+    clip: 5.0
+
+model:
+  type: cnn_transformer
+  n_features: 8
+  seq_len: 60
+  horizon: 1
+  conv_channels: 128
+  conv_kernel: 3
+  d_model: 128
+  n_heads: 4
+  n_encoder_layers: 3
+  ff_dim: 256
+  dropout: 0.1
+  mlp_hidden: 64
+
+training:
+  device: cpu
+  epochs: 50
+  batch_size: 64
+  lr: 0.0007
+  weight_decay: 0.0001
+  grad_clip_norm: 0.8
+  early_stopping_patience: 10
+  loss:
+    type: mse_plus_sharpe
+    lambda_sharpe: 0.1
+    temperature: 0.02
+    warmup_epochs: 3
+  scheduler:
+    type: cosine_annealing
+    T_max: 50
+    eta_min: 0.000001
+  seeds: [42, 123, 456, 789, 1024]
+
+evaluation:
+  annualization_factor: 252
+  signal_threshold: 0.0
+  transaction_cost_bps: 5.0
+  fixed_cost_per_trade: 0.0
+  slippage_bps: 2.0
+  regime:
+    window_days: 60
+    bull_threshold: 0.05
+    bear_threshold: -0.05
+
+# Acceptance thresholds vs Phase 0 baseline
+acceptance:
+  mae_ratio: 0.97        # cnn_trans_MAE <= 0.97 * phase0_MAE
+  rmse_ratio: 0.97       # cnn_trans_RMSE <= 0.97 * phase0_RMSE
+  sharpe_delta: 0.10     # cnn_trans_Sharpe >= phase0_Sharpe + 0.10
+
+logging:
+  experiment_tracker: mlflow
+  run_name_template: "phase1_cnn_trans_seed_{seed}"
+  mlflow_tracking_uri: "artifacts/mlruns"
+
+api:
+  default_model: cnn_transformer
+  allow_legacy_prophet: true

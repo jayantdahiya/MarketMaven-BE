@@ -7,15 +7,19 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
+from torch.optim.lr_scheduler import LRScheduler, ReduceLROnPlateau
 
 logger = logging.getLogger(__name__)
+
+# Union of all supported scheduler types (covers both plateau and epoch-based).
+_AnyScheduler = LRScheduler | ReduceLROnPlateau
 
 
 def save_checkpoint(
     path: str,
     model: nn.Module,
     optimizer: torch.optim.Optimizer,
-    scheduler: torch.optim.lr_scheduler._LRScheduler | None,
+    scheduler: _AnyScheduler | None,
     epoch: int,
     config: dict,
     feature_cols: list[str],
@@ -45,7 +49,7 @@ def load_checkpoint(
     path: str,
     model: nn.Module,
     optimizer: torch.optim.Optimizer | None = None,
-    scheduler: torch.optim.lr_scheduler._LRScheduler | None = None,
+    scheduler: _AnyScheduler | None = None,
     device: str | torch.device = 'cpu',
 ) -> dict:
     """Load checkpoint, apply model.load_state_dict; optionally restore optimizer/scheduler. Return full dict."""

@@ -12,6 +12,7 @@ class DailyForecastRequest(BaseModel):
     asset_id: str = Field(..., pattern=r'^[A-Z0-9._-]{1,15}$')
     horizon_days: int = Field(1, ge=1, le=10)
     model: str = 'lstm_baseline'
+    # Registered model types: 'lstm_baseline', 'cnn_transformer', 'mamba_ssm'
     as_of_date: date | None = None
 
     @field_validator('horizon_days')

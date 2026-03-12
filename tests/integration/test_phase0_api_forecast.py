@@ -12,6 +12,22 @@ def client():
     return TestClient(app)
 
 
+@pytest.fixture
+def clean_client(tmp_path):
+    """Client with empty checkpoint dir so no model can be loaded."""
+
+    from api.data.pipeline import load_config
+    from api.services.forecast_service import ForecastService
+
+    app = create_app()
+    # Point forecast service to an empty checkpoint dir
+    config = load_config('config/phase_0.yaml')
+    config.setdefault('paths', {})['checkpoints_dir'] = str(tmp_path / 'empty_ckpts')
+    (tmp_path / 'empty_ckpts').mkdir()
+    app.state.forecast_service = ForecastService(config=config)
+    return TestClient(app)
+
+
 def test_index_route_200(client):
     r = client.get('/')
     assert r.status_code == 200
@@ -33,9 +49,9 @@ def test_forecast_daily_invalid_model_400(client):
     assert r.status_code == 400
 
 
-def test_forecast_daily_no_checkpoint_503(client):
+def test_forecast_daily_no_checkpoint_503(clean_client):
     """When no checkpoint exists, LSTM forecast returns 503."""
-    r = client.post(
+    r = clean_client.post(
         '/forecast/daily', json={'asset_id': 'AAPL', 'model': 'lstm_baseline'}
     )
     assert r.status_code == 503

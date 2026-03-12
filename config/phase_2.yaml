@@ -1,0 +1,105 @@
+_base_: config/base.yaml
+
+project:
+  name: market-maven
+  phase: 2
+
+paths:
+  data_dir: artifacts/data/phase0   # reuse Phase 0 data — same 5 assets
+  checkpoints_dir: artifacts/checkpoints/phase2
+  reports_dir: artifacts/reports/phase2
+
+data:
+  source: yfinance
+  assets: [AAPL, MSFT, GOOGL, AMZN, SPY]
+  start_date: "2010-01-01"
+  end_date: "2025-12-31"
+  interval: "1d"
+  seq_len: 90
+  horizon_days: 1
+  feature_cols: [close, volume, sma_15, sma_45, rsi_14, macd, macd_signal, obv]
+  target_col: log_return_1d
+  target_horizons: [1]
+  direction_threshold: 0.0
+  split:
+    train_end: "2021-12-31"
+    val_end: "2023-12-31"
+    test_end: "2025-12-31"
+  normalization:
+    mode: per_asset_zscore
+    clip: 5.0
+
+model:
+  type: mamba_ssm
+  input_dim: 8
+  d_model: 128
+  d_state: 16
+  d_conv: 4
+  expand: 2
+  num_layers: 4
+  num_assets: 5
+  graph_dim: 32
+  use_graph_context: true
+  dropout: 0.1
+  forecast_horizons: 1
+
+graph:
+  enabled: true
+  correlation_window: 60
+  correlation_threshold: 0.5
+  context_features:
+    - graph_degree
+    - graph_return_mean_20d
+    - graph_volatility_20d
+  recompute_every: 20
+
+training:
+  device: cpu
+  epochs: 55
+  batch_size: 64
+  lr: 0.0006
+  weight_decay: 0.00015
+  grad_clip_norm: 0.8
+  early_stopping_patience: 10
+  loss:
+    type: mse_plus_sharpe
+    lambda_sharpe: 0.12
+    temperature: 0.02
+    warmup_epochs: 3
+    sharpe_window: 20
+  scheduler:
+    type: one_cycle_lr
+    max_lr: 0.0006
+    pct_start: 0.3
+    anneal_strategy: cos
+    div_factor: 25.0
+    final_div_factor: 1000.0
+  seeds: [42, 123, 456, 789, 1024]
+
+mamba:
+  backend: auto   # auto | cuda | pure_pytorch
+
+evaluation:
+  annualization_factor: 252
+  signal_threshold: 0.0
+  transaction_cost_bps: 5.0
+  fixed_cost_per_trade: 0.0
+  slippage_bps: 2.0
+  regime:
+    window_days: 60
+    bull_threshold: 0.05
+    bear_threshold: -0.05
+
+# Acceptance thresholds vs Phase 1 baseline
+acceptance:
+  mae_ratio: 0.99        # mamba_MAE <= 0.99 * phase1_MAE
+  sharpe_delta: 0.05     # mamba_Sharpe >= phase1_Sharpe + 0.05
+
+logging:
+  experiment_tracker: mlflow
+  run_name_template: "phase2_mamba_seed_{seed}"
+  mlflow_tracking_uri: "artifacts/mlruns"
+
+api:
+  default_model: mamba_ssm
+  allow_legacy_prophet: true

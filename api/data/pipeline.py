@@ -8,10 +8,12 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import torch
 import yfinance as yf
 from torch.utils.data import DataLoader
 
 from api.data import datasets, features, normalization, sources, splitters, targets
+from api.data.asset_graph import compute_graph_context
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +120,31 @@ class DataPipeline:
         self._scaler = scaler
         return scaler
 
+    def build_graph_context(
+        self, train_df: pd.DataFrame
+    ) -> tuple[torch.Tensor, dict[str, int]]:
+        """Compute graph-context features and asset-to-index mapping.
+
+        Uses the *training* split only (to avoid look-ahead) for building the
+        correlation graph and deriving per-asset features.
+
+        Returns:
+            Tuple of ``(graph_context, asset_to_index)`` where
+            ``graph_context`` is a ``[A, 3]`` float32 tensor and
+            ``asset_to_index`` maps asset-ID strings to integer indices.
+        """
+        graph_cfg = self.cfg.get('graph', {})
+        assets = sorted(train_df['asset_id'].unique().tolist())
+        asset_to_index = {a: i for i, a in enumerate(assets)}
+        gc = compute_graph_context(
+            train_df,
+            assets,
+            window=graph_cfg.get('correlation_window', 60),
+            threshold=graph_cfg.get('correlation_threshold', 0.5),
+            return_window=20,
+        )
+        return gc, asset_to_index
+
     def build_dataloaders(
         self,
         shuffle_train: bool = True,
@@ -134,12 +161,23 @@ class DataPipeline:
         seq_len = self.data_cfg.get('seq_len', 60)
         horizon = self.data_cfg.get('horizon_days', 1)
         batch_size = self.train_cfg.get('batch_size', 64)
+
+        # Graph context (Phase 2+): computed from training data only
+        graph_enabled = self.cfg.get('graph', {}).get('enabled', False)
+        if graph_enabled:
+            gc, asset_to_index = self.build_graph_context(self._train_df)
+        else:
+            gc = None
+            asset_to_index = None
+
         train_ds = datasets.DailySequenceDataset(
             self._scaler.transform(self._train_df),
             feature_cols,
             target_col,
             seq_len,
             horizon,
+            asset_to_index=asset_to_index,
+            graph_context=gc,
         )
         val_ds = datasets.DailySequenceDataset(
             self._scaler.transform(self._val_df),
@@ -147,6 +185,8 @@ class DataPipeline:
             target_col,
             seq_len,
             horizon,
+            asset_to_index=asset_to_index,
+            graph_context=gc,
         )
         test_ds = datasets.DailySequenceDataset(
             self._scaler.transform(self._test_df),
@@ -154,6 +194,8 @@ class DataPipeline:
             target_col,
             seq_len,
             horizon,
+            asset_to_index=asset_to_index,
+            graph_context=gc,
         )
         train_loader = DataLoader(
             train_ds, batch_size=batch_size, shuffle=shuffle_train, num_workers=0
