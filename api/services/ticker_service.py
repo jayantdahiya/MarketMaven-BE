@@ -6,6 +6,8 @@ import json
 import logging
 from typing import Any
 
+import redis
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,6 +29,9 @@ class TickerService:
                     return json.loads(cached)
             except (json.JSONDecodeError, TypeError, AttributeError) as e:
                 logger.warning('Redis cache decode error, refetching tickers: %s', e)
+            except (redis.ConnectionError, redis.TimeoutError) as e:
+                logger.warning('Redis unreachable, using Supabase only: %s', e)
+                self._redis = None
         try:
             result = self._supabase.table('tickers').select('*').execute()
             data = result.data if hasattr(result, 'data') else []

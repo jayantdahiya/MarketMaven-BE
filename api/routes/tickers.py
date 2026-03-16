@@ -14,4 +14,10 @@ async def get_tickers(request: Request) -> list:
         raise HTTPException(
             status_code=503, detail='Ticker service unavailable (missing Supabase)'
         )
-    return service.get_tickers()
+    try:
+        return service.get_tickers()
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail={'code': 'ticker_source_unavailable', 'message': str(e)},
+        ) from e

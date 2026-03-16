@@ -5,13 +5,17 @@ Model factory: create_model(model_type, model_cfg) → nn.Module.
 import torch.nn as nn
 
 from api.models.cnn_transformer import CnnTransForecaster
+from api.models.lob_models import LobCNNBaseline, TLOBForecaster
 from api.models.lstm_baseline import LSTMBaseline
 from api.models.mamba_ssm import MambaForecaster
 
 MODEL_REGISTRY: dict[str, type] = {
     'lstm_baseline': LSTMBaseline,
     'cnn_transformer': CnnTransForecaster,
+    'cnn_transformer_multimodal': CnnTransForecaster,
     'mamba_ssm': MambaForecaster,
+    'tlob_forecaster': TLOBForecaster,
+    'lob_cnn_baseline': LobCNNBaseline,
 }
 
 # Constructor kwargs extracted from model config for each registered model type.
@@ -30,6 +34,23 @@ _MODEL_KWARGS: dict[str, list[str]] = {
         'dropout',
         'mlp_hidden',
     ],
+    'cnn_transformer_multimodal': [
+        'n_features',
+        'seq_len',
+        'horizon',
+        'conv_channels',
+        'conv_kernel',
+        'd_model',
+        'n_heads',
+        'n_encoder_layers',
+        'ff_dim',
+        'dropout',
+        'mlp_hidden',
+        'multimodal',
+        'encoder_dim',
+        'fusion_dim',
+        'feature_group_sizes',
+    ],
     'mamba_ssm': [
         'input_dim',
         'd_model',
@@ -42,6 +63,26 @@ _MODEL_KWARGS: dict[str, list[str]] = {
         'use_graph_context',
         'dropout',
         'forecast_horizons',
+    ],
+    'tlob_forecaster': [
+        'levels',
+        'channels',
+        'aux_dim',
+        'd_model',
+        'spatial_heads',
+        'temporal_heads',
+        'layers',
+        'ff_dim',
+        'dropout',
+        'num_classes',
+    ],
+    'lob_cnn_baseline': [
+        'levels',
+        'channels',
+        'aux_dim',
+        'd_model',
+        'dropout',
+        'num_classes',
     ],
 }
 

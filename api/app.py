@@ -6,18 +6,21 @@ import os
 from pathlib import Path
 
 import redis
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client
 
 from api.data.pipeline import load_config
-from api.routes import auth, forecast, metrics, tickers
+from api.routes import alphas, auth, forecast, metrics, tickers
+from api.services.alpha_service import AlphaService
 from api.services.auth_service import AuthService
 from api.services.forecast_service import ForecastService
 from api.services.ticker_service import TickerService
 
 
 def create_app() -> FastAPI:
+    load_dotenv()
     app = FastAPI(title='Market Maven API')
     origins = os.environ.get(
         'ALLOWED_ORIGINS',
@@ -52,21 +55,66 @@ def create_app() -> FastAPI:
         supabase_client = None
         app.state.auth_service = None
     try:
+        redis_host = (os.environ.get('REDIS_HOST') or 'localhost').strip()
+        if redis_host.startswith('https://'):
+            redis_host = redis_host.removeprefix('https://').split('/')[0]
+            redis_ssl = True
+        elif redis_host.startswith('http://'):
+            redis_host = redis_host.removeprefix('http://').split('/')[0]
+            redis_ssl = False
+        else:
+            redis_ssl = os.environ.get('REDIS_SSL', '').lower() == 'true'
         redis_client = redis.Redis(
-            host=os.environ.get('REDIS_HOST', 'localhost'),
+            host=redis_host,
             port=int(os.environ.get('REDIS_PORT', '6379')),
             password=os.environ.get('REDIS_PASSWORD') or None,
-            ssl=os.environ.get('REDIS_SSL', '').lower() == 'true',
+            ssl=redis_ssl,
         )
+        redis_client.ping()
     except Exception:
         redis_client = None
     app.state.ticker_service = (
         TickerService(supabase_client, redis_client, 3600) if supabase_client else None
     )
+    # Alpha service (Phase 3+): initialise when multimodal alpha is enabled
+    multimodal_cfg = config.get('multimodal', {})
+    alpha_cfg = multimodal_cfg.get('alpha', {})
+    if multimodal_cfg.get('enabled', False) and alpha_cfg.get('enabled', False):
+        app.state.alpha_service = AlphaService(
+            model_name=alpha_cfg.get('llm_model', 'gpt-4.1-mini'),
+            cache_path=alpha_cfg.get(
+                'cache_path', 'artifacts/data/phase3/alpha_cache.jsonl'
+            ),
+            temperature=alpha_cfg.get('temperature', 0.1),
+        )
+    else:
+        app.state.alpha_service = None
+
+    # LOB service (Phase 4): conditionally register when lob.api_enabled is true
+    lob_cfg = config.get('lob', {})
+    if lob_cfg.get('api_enabled', False):
+        try:
+            from api.routes import lob as lob_route  # noqa: PLC0415
+            from api.services.lob_service import LOBService  # noqa: PLC0415
+
+            lob_config_path = Path('config/phase_4.yaml')
+            lob_full_cfg = (
+                load_config(str(lob_config_path))
+                if lob_config_path.exists()
+                else config
+            )
+            app.state.lob_service = LOBService(cfg=lob_full_cfg)
+            app.include_router(lob_route.router)
+        except Exception:
+            app.state.lob_service = None
+    else:
+        app.state.lob_service = None
+
     app.include_router(forecast.router)
     app.include_router(auth.router)
     app.include_router(tickers.router)
     app.include_router(metrics.router)
+    app.include_router(alphas.router)
 
     @app.get('/')
     def index():

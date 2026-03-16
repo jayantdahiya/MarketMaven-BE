@@ -46,6 +46,29 @@ def calculate_obv(close: pd.Series, volume: pd.Series) -> pd.Series:
     return obv.astype(np.float32)
 
 
+def calculate_volume_ratio(volume: pd.Series, window: int = 20) -> pd.Series:
+    """Volume ratio: volume_t / mean(volume_{t-window+1:t}).
+
+    Division-by-zero guarded with max(denominator, 1e-8).
+    Capped at 10.0 before returning.
+    """
+    avg_vol = volume.rolling(window=window, min_periods=1).mean()
+    ratio = volume / np.maximum(avg_vol, 1e-8)
+    return np.minimum(ratio, 10.0).astype(np.float32)
+
+
+def calculate_turnover_proxy(close: pd.Series, volume: pd.Series) -> pd.Series:
+    """Turnover proxy: close_t * volume_t (liquidity proxy)."""
+    return (close * volume).astype(np.float32)
+
+
+def calculate_volatility(close: pd.Series, window: int = 20) -> pd.Series:
+    """Rolling realized volatility: std of log returns over window."""
+    log_ret = np.log(close / close.shift(1))
+    vol = log_ret.rolling(window=window, min_periods=1).std()
+    return vol.astype(np.float32)
+
+
 def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add SMA(15), SMA(45), RSI(14), MACD(12,26,9), OBV per asset.
@@ -69,4 +92,34 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
         obv_ser.index = g.index
         obv_parts.append(obv_ser)
     out['obv'] = pd.concat(obv_parts)
+    return out
+
+
+def add_volume_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Add volume_ratio_20, turnover_proxy, volatility_20 per asset.
+
+    These are multimodal price_tech features used by Phase 3+.
+    First 19 rows of rolling features are forward-filled with column median.
+
+    Args:
+        df: DataFrame with columns: close, volume, asset_id.
+
+    Returns:
+        DataFrame with added volume feature columns.
+    """
+    out = df.copy()
+    grouped = out.groupby('asset_id', group_keys=False)
+    out['volume_ratio_20'] = grouped['volume'].transform(
+        lambda s: calculate_volume_ratio(s, 20)
+    )
+    out['turnover_proxy'] = grouped.apply(
+        lambda g: calculate_turnover_proxy(g['close'], g['volume'])
+    ).reset_index(level=0, drop=True)
+    out['volatility_20'] = grouped['close'].transform(
+        lambda s: calculate_volatility(s, 20)
+    )
+    # Forward-fill NaN values with column median for rolling warmup rows
+    for col in ['volume_ratio_20', 'turnover_proxy', 'volatility_20']:
+        median_val = out[col].median()
+        out[col] = out[col].fillna(median_val)
     return out

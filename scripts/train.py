@@ -3,6 +3,8 @@
 
 MLflow tracking is enabled when config['logging']['experiment_tracker'] == 'mlflow'.
 Set MLFLOW_TRACKING_URI or config['logging']['mlflow_tracking_uri'] to control storage.
+
+For LOB task (config task.type == 'lob'), routes to LOBPipeline + fit_lob().
 """
 
 import argparse
@@ -109,6 +111,91 @@ def _try_import_mlflow():
         return None
 
 
+def _train_lob(cfg: dict, seed: int, run_id: str) -> dict:
+    """Run LOB classification training for a single seed."""
+    from torch.utils.data import DataLoader, TensorDataset  # noqa: PLC0415
+
+    import numpy as np  # noqa: PLC0415
+
+    from api.data.lob_pipeline import LOBPipeline  # noqa: PLC0415
+
+    train_cfg = cfg.get('training', {})
+    device = train_cfg.get('device', 'cpu')
+    paths = cfg.get('paths', {})
+    processed_dir = Path(paths.get('lob_processed_dir', 'artifacts/data/phase4'))
+
+    # Prefer pre-built splits (from build_lob_dataset.py); fall back to in-memory
+    def _load_split(split: str):
+        split_dir = processed_dir / split
+        x_book_path = split_dir / 'x_book.npy'
+        x_aux_path = split_dir / 'x_aux.npy'
+        y_path = split_dir / 'y_class.npy'
+        if x_book_path.exists() and x_aux_path.exists() and y_path.exists():
+            x_book = np.load(str(x_book_path))
+            x_aux = np.load(str(x_aux_path))
+            y_class = np.load(str(y_path))
+            return (
+                torch.from_numpy(x_book),
+                torch.from_numpy(x_aux),
+                torch.from_numpy(y_class),
+            )
+        raise FileNotFoundError(
+            f'Pre-built LOB split not found under {split_dir}. '
+            'Run scripts/build_lob_dataset.py first.'
+        )
+
+    x_book_tr, x_aux_tr, y_tr = _load_split('train')
+    x_book_val, x_aux_val, y_val = _load_split('val')
+
+    batch_size = train_cfg.get('batch_size', 128)
+
+    # Build DataLoaders yielding 4-tuples (x_book, x_aux, y_class, meta={})
+    # TensorDataset gives 3 tensors; we wrap with a collate that adds empty meta
+    def _make_loader(xb, xa, y, shuffle: bool) -> DataLoader:
+        ds = TensorDataset(xb, xa, y)
+
+        def _collate(batch):
+            xb_b = torch.stack([b[0] for b in batch])
+            xa_b = torch.stack([b[1] for b in batch])
+            y_b = torch.stack([b[2] for b in batch])
+            return xb_b, xa_b, y_b, {}
+
+        return DataLoader(
+            ds, batch_size=batch_size, shuffle=shuffle, collate_fn=_collate
+        )
+
+    train_loader = _make_loader(x_book_tr, x_aux_tr, y_tr, shuffle=True)
+    val_loader = _make_loader(x_book_val, x_aux_val, y_val, shuffle=False)
+
+    model_cfg = cfg.get('model', {})
+    model = create_model(model_cfg.get('type', 'tlob_forecaster'), model_cfg)
+
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=train_cfg.get('lr', 8e-4),
+        weight_decay=train_cfg.get('weight_decay', 1e-4),
+    )
+
+    loss_cfg = train_cfg.get('loss', {})
+    criterion = losses.WeightedCEFocalLoss(
+        class_weights=loss_cfg.get('class_weights', [1.2, 0.8, 1.2]),
+        lambda_focal=loss_cfg.get('lambda_focal', 0.25),
+        focal_gamma=loss_cfg.get('focal_gamma', 1.5),
+    )
+
+    sched_cfg = train_cfg.get('scheduler', {})
+    scheduler = build_scheduler(
+        optimizer,
+        sched_cfg,
+        steps_per_epoch=len(train_loader),
+        epochs=train_cfg.get('epochs', 45),
+    )
+
+    trainer = Trainer(cfg, model, optimizer, scheduler, criterion, device)
+    result = trainer.fit_lob(train_loader, val_loader, run_id=run_id)
+    return result
+
+
 def main() -> None:
     args = parse_args()
     cfg = load_config(args.config)
@@ -127,13 +214,7 @@ def main() -> None:
     train_cfg = cfg.get('training', {})
     device = train_cfg.get('device', 'cpu')
 
-    loss_cfg = train_cfg.get('loss', {})
-    criterion = losses.CompositeForecastLoss(
-        lambda_sharpe=loss_cfg.get('lambda_sharpe', 0.1),
-        temperature=loss_cfg.get('temperature', 0.02),
-        warmup_epochs=loss_cfg.get('warmup_epochs', 3),
-        sharpe_window=loss_cfg.get('sharpe_window', 0),
-    )
+    task_type = cfg.get('task', {}).get('type', 'daily')
 
     # MLflow setup (optional)
     log_cfg = cfg.get('logging', {})
@@ -149,6 +230,22 @@ def main() -> None:
     for seed in seeds:
         set_global_seed(seed)
         run_id = f'seed_{seed}_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+
+        if task_type == 'lob':
+            result = _train_lob(cfg, seed, run_id)
+            print(
+                f'Seed {seed} done. Best LOB checkpoint: {result["best_checkpoint_path"]}'
+            )
+            continue
+
+        # --- Daily regression path (unchanged) ---
+        loss_cfg = train_cfg.get('loss', {})
+        criterion = losses.CompositeForecastLoss(
+            lambda_sharpe=loss_cfg.get('lambda_sharpe', 0.1),
+            temperature=loss_cfg.get('temperature', 0.02),
+            warmup_epochs=loss_cfg.get('warmup_epochs', 3),
+            sharpe_window=loss_cfg.get('sharpe_window', 0),
+        )
 
         # Build data pipeline
         pipeline = DataPipeline(cfg)

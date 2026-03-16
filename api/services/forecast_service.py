@@ -16,6 +16,8 @@ from api.schemas.forecast import (
     DailyForecastPoint,
     DailyForecastRequest,
     DailyForecastResponse,
+    MultimodalForecastRequest,
+    MultimodalForecastResponse,
 )
 from api.training import checkpointing
 
@@ -189,4 +191,87 @@ class ForecastService:
             horizon_days=req.horizon_days,
             generated_at=datetime.utcnow(),
             predictions=points[: req.horizon_days],
+        )
+
+    def predict_multimodal(
+        self, req: MultimodalForecastRequest
+    ) -> MultimodalForecastResponse:
+        """Run multimodal inference with modality masking.
+
+        Assembles the multimodal feature tensor, builds a modality mask
+        based on the request's include flags and data availability, and
+        runs inference through the multimodal CNN-Transformer.
+
+        Args:
+            req: Multimodal forecast request.
+
+        Returns:
+            MultimodalForecastResponse with used_modalities and alpha_version.
+        """
+        model_name = 'cnn_transformer_multimodal'
+        model = self._load_model(model_name)
+        pipeline = self._get_pipeline()
+        scaler = self._scaler_cache.get(model_name) or pipeline._scaler
+        if scaler is None:
+            raise RuntimeError('No scaler available; train and save a checkpoint first')
+
+        try:
+            window = pipeline.build_inference_window(
+                req.asset_id,
+                as_of_date=req.as_of_date,
+                scaler=scaler,
+            )
+        except Exception as e:
+            raise RuntimeError(f'Could not build inference window: {e}') from e
+
+        x = torch.from_numpy(window).unsqueeze(0).float()  # [1, T, F]
+
+        # Build modality mask based on request flags
+        # Order: [price_tech, context, sentiment, alpha]
+        modality_mask = torch.tensor(
+            [
+                [
+                    1.0,  # price_tech always available
+                    1.0 if req.include_context else 0.0,
+                    1.0 if req.include_sentiment else 0.0,
+                    1.0 if req.include_alpha else 0.0,
+                ]
+            ],
+            dtype=torch.float32,
+        )  # [1, 4]
+
+        with torch.no_grad():
+            y_hat = model(x, modality_mask=modality_mask)
+
+        pred_return = y_hat.item()
+        signal, confidence = self._build_signal(pred_return)
+        as_of = req.as_of_date or date.today()
+        next_day = as_of + timedelta(days=1)
+        point = DailyForecastPoint(
+            timestamp=datetime.combine(next_day, datetime.min.time()),
+            predicted_return=pred_return,
+            predicted_price=None,
+            signal=signal,
+            confidence=confidence,
+        )
+
+        # Determine which modalities were used
+        used_modalities = ['price_tech']
+        if req.include_context:
+            used_modalities.append('context')
+        if req.include_sentiment:
+            used_modalities.append('sentiment')
+        if req.include_alpha:
+            used_modalities.append('alpha')
+
+        alpha_version = self.config.get('api', {}).get('alpha_version')
+
+        return MultimodalForecastResponse(
+            asset_id=req.asset_id,
+            model=model_name,
+            horizon_days=req.horizon_days,
+            generated_at=datetime.utcnow(),
+            predictions=[point],
+            used_modalities=used_modalities,
+            alpha_version=alpha_version,
         )

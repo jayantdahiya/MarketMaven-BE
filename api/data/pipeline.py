@@ -1,5 +1,9 @@
 """
 End-to-end daily data pipeline: load, features, targets, split, scale, DataLoaders, inference window.
+
+Supports multimodal feature groups (Phase 3+): market context, sentiment,
+and alpha features are loaded from precomputed parquets and merged into the
+feature matrix with per-row modality masks.
 """
 
 import logging
@@ -47,12 +51,13 @@ def load_config(path: str) -> dict:
 
 
 class DataPipeline:
-    """Orchestrates load → features → targets → split → scale → datasets → DataLoaders."""
+    """Orchestrates load -> features -> targets -> split -> scale -> datasets -> DataLoaders."""
 
     def __init__(self, cfg: dict):
         self.cfg = cfg
         self.data_cfg = cfg.get('data', {})
         self.train_cfg = cfg.get('training', {})
+        self.multimodal_cfg = cfg.get('multimodal', {})
         self._scaler: normalization.FeatureScaler | None = None
         self._train_df: pd.DataFrame | None = None
         self._val_df: pd.DataFrame | None = None
@@ -81,6 +86,9 @@ class DataPipeline:
     def build_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add technical features and return targets."""
         df = features.add_technical_features(df)
+        # Phase 3+: add volume/turnover/volatility features
+        if self.multimodal_cfg.get('enable_volume_features', False):
+            df = features.add_volume_features(df)
         horizons = self.data_cfg.get('target_horizons', [1])
         df = targets.add_return_targets(df, horizons)
         return df
@@ -145,6 +153,187 @@ class DataPipeline:
         )
         return gc, asset_to_index
 
+    # ------------------------------------------------------------------
+    # Multimodal data loading (Phase 3+)
+    # ------------------------------------------------------------------
+
+    def load_market_context(self) -> pd.DataFrame | None:
+        """Load market context features (SPY/QQQ/VIX).
+
+        Reads from precomputed parquet if available, otherwise fetches via
+        yfinance and builds context features.
+
+        Returns:
+            DataFrame with timestamp, spy_return_1d, qqq_return_1d, vix_close.
+            None if context is disabled or unavailable.
+        """
+        if not self.multimodal_cfg.get('include_context', False):
+            return None
+        from api.data.market_context import build_context_features, fetch_context_series
+
+        context_path = (
+            Path(self.cfg.get('paths', {}).get('data_dir', 'artifacts/data/phase0'))
+            / 'context_daily.parquet'
+        )
+        if context_path.exists():
+            logger.info('Loading market context from %s', context_path)
+            return pd.read_parquet(context_path)
+
+        symbols = self.multimodal_cfg.get('context_symbols', ['SPY', 'QQQ', '^VIX'])
+        start = self.data_cfg.get('start_date', '2010-01-01')
+        end = self.data_cfg.get('end_date', '2025-12-31')
+        try:
+            raw = fetch_context_series(start, end, symbols)
+            ctx = build_context_features(raw)
+            logger.info('Built market context: %d rows', len(ctx))
+            return ctx
+        except Exception:
+            logger.warning('Failed to load market context, skipping', exc_info=True)
+            return None
+
+    def load_sentiment(self) -> pd.DataFrame | None:
+        """Load precomputed sentiment features from parquet.
+
+        Returns:
+            DataFrame with timestamp, asset_id, sentiment_mean, sentiment_std,
+            sentiment_pos_ratio, sentiment_count. None if disabled/missing.
+        """
+        if not self.multimodal_cfg.get('include_sentiment', False):
+            return None
+        sentiment_dir = self.cfg.get('paths', {}).get(
+            'sentiment_dir', 'artifacts/data/phase3'
+        )
+        sentiment_path = Path(sentiment_dir) / 'sentiment_daily.parquet'
+        if sentiment_path.exists():
+            logger.info('Loading sentiment from %s', sentiment_path)
+            df = pd.read_parquet(sentiment_path)
+            df['timestamp'] = pd.to_datetime(df['timestamp']).dt.normalize()
+            return df
+        logger.warning('Sentiment parquet not found at %s', sentiment_path)
+        return None
+
+    def load_alpha_features(self) -> pd.DataFrame | None:
+        """Load precomputed alpha features from parquet.
+
+        Returns:
+            DataFrame with timestamp, asset_id, alpha_1..alpha_8.
+            None if disabled/missing.
+        """
+        if not self.multimodal_cfg.get('include_alpha', False):
+            return None
+        alpha_dir = self.cfg.get('paths', {}).get('alpha_dir', 'artifacts/data/phase3')
+        alpha_path = Path(alpha_dir) / 'alpha_daily.parquet'
+        if alpha_path.exists():
+            logger.info('Loading alpha features from %s', alpha_path)
+            df = pd.read_parquet(alpha_path)
+            df['timestamp'] = pd.to_datetime(df['timestamp']).dt.normalize()
+            return df
+        logger.warning('Alpha parquet not found at %s', alpha_path)
+        return None
+
+    def _merge_multimodal(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Merge context, sentiment, and alpha data into base feature df.
+
+        Adds zero-filled columns with appropriate modality mask when a
+        modality source is missing.
+        """
+        from api.data import alpha_features, sentiment
+
+        df = df.copy()
+        df['timestamp'] = pd.to_datetime(df['timestamp']).dt.normalize()
+
+        # --- Market context (broadcast to all assets) ---
+        context_df = self.load_market_context()
+        context_cols = self.multimodal_cfg.get(
+            'context_features', ['spy_return_1d', 'qqq_return_1d', 'vix_close']
+        )
+        if context_df is not None and not context_df.empty:
+            df = df.merge(
+                context_df[['timestamp'] + context_cols], on='timestamp', how='left'
+            )
+            for col in context_cols:
+                df[col] = df[col].ffill().bfill().fillna(0.0).astype(np.float32)
+            df['_context_available'] = 1
+        else:
+            for col in context_cols:
+                df[col] = np.float32(0.0)
+            df['_context_available'] = 0
+
+        # --- Sentiment (per asset) ---
+        sentiment_df = self.load_sentiment()
+        sentiment_cols = [
+            'sentiment_mean',
+            'sentiment_std',
+            'sentiment_pos_ratio',
+            'sentiment_count',
+        ]
+        neutral = self.multimodal_cfg.get('sentiment', {}).get(
+            'neutral_defaults',
+            {
+                'sentiment_mean': 0.0,
+                'sentiment_std': 0.0,
+                'sentiment_pos_ratio': 0.5,
+                'sentiment_count': 0,
+            },
+        )
+        if sentiment_df is not None and not sentiment_df.empty:
+            df = df.merge(
+                sentiment_df[['timestamp', 'asset_id'] + sentiment_cols],
+                on=['timestamp', 'asset_id'],
+                how='left',
+            )
+            df = sentiment.fill_neutral_defaults(df, neutral)
+            df['_sentiment_available'] = (
+                df[sentiment_cols].notna().all(axis=1).astype(int)
+            )
+            # Fill any remaining NaNs after merge
+            for col in sentiment_cols:
+                df[col] = df[col].fillna(neutral.get(col, 0.0))
+            df['_sentiment_available'] = 1
+        else:
+            for col in sentiment_cols:
+                df[col] = neutral.get(col, 0.0)
+            df['_sentiment_available'] = 0
+        # Cast types
+        for col in ['sentiment_mean', 'sentiment_std', 'sentiment_pos_ratio']:
+            df[col] = df[col].astype(np.float32)
+        df['sentiment_count'] = df['sentiment_count'].astype(np.int32)
+
+        # --- Alpha features (per asset) ---
+        alpha_df = self.load_alpha_features()
+        df = alpha_features.merge_alpha_features(df, alpha_df)
+        if alpha_df is not None and not alpha_df.empty:
+            df['_alpha_available'] = 1
+        else:
+            df['_alpha_available'] = 0
+
+        # price_tech is always available
+        df['_price_tech_available'] = 1
+
+        return df
+
+    @staticmethod
+    def build_feature_group_slices(
+        feature_cols: list[str],
+        feature_groups: dict[str, list[str]],
+    ) -> dict[str, tuple[int, int]]:
+        """Compute (start_idx, end_idx) slices for each feature group.
+
+        Args:
+            feature_cols: Ordered list of all feature column names.
+            feature_groups: Mapping of group name -> list of column names.
+
+        Returns:
+            Dict mapping group name to (start, end) index tuple.
+        """
+        col_index = {c: i for i, c in enumerate(feature_cols)}
+        slices: dict[str, tuple[int, int]] = {}
+        for group_name, cols in feature_groups.items():
+            indices = [col_index[c] for c in cols if c in col_index]
+            if indices:
+                slices[group_name] = (min(indices), max(indices) + 1)
+        return slices
+
     def build_dataloaders(
         self,
         shuffle_train: bool = True,
@@ -153,6 +342,12 @@ class DataPipeline:
         """Full pipeline: load, features, split, scale, datasets, DataLoaders."""
         df = self.load_raw_data(data_path=data_path)
         df = self.build_features(df)
+
+        # Phase 3+: merge multimodal features before splitting
+        multimodal_enabled = self.multimodal_cfg.get('enabled', False)
+        if multimodal_enabled:
+            df = self._merge_multimodal(df)
+
         feature_cols = self.data_cfg.get('feature_cols', [])
         target_col = self.data_cfg.get('target_col', 'log_return_1d')
         df = df.dropna(subset=feature_cols + [target_col])
@@ -170,32 +365,34 @@ class DataPipeline:
             gc = None
             asset_to_index = None
 
+        # Multimodal: feature groups + modality masks
+        feature_groups = None
+        feature_group_slices = None
+        if multimodal_enabled:
+            feature_groups = self.multimodal_cfg.get('feature_groups', {})
+            feature_group_slices = self.build_feature_group_slices(
+                feature_cols, feature_groups
+            )
+
+        ds_kwargs: dict = {
+            'feature_cols': feature_cols,
+            'target_col': target_col,
+            'seq_len': seq_len,
+            'horizon': horizon,
+            'asset_to_index': asset_to_index,
+            'graph_context': gc,
+            'feature_groups': feature_groups,
+            'feature_group_slices': feature_group_slices,
+        }
+
         train_ds = datasets.DailySequenceDataset(
-            self._scaler.transform(self._train_df),
-            feature_cols,
-            target_col,
-            seq_len,
-            horizon,
-            asset_to_index=asset_to_index,
-            graph_context=gc,
+            self._scaler.transform(self._train_df), **ds_kwargs
         )
         val_ds = datasets.DailySequenceDataset(
-            self._scaler.transform(self._val_df),
-            feature_cols,
-            target_col,
-            seq_len,
-            horizon,
-            asset_to_index=asset_to_index,
-            graph_context=gc,
+            self._scaler.transform(self._val_df), **ds_kwargs
         )
         test_ds = datasets.DailySequenceDataset(
-            self._scaler.transform(self._test_df),
-            feature_cols,
-            target_col,
-            seq_len,
-            horizon,
-            asset_to_index=asset_to_index,
-            graph_context=gc,
+            self._scaler.transform(self._test_df), **ds_kwargs
         )
         train_loader = DataLoader(
             train_ds, batch_size=batch_size, shuffle=shuffle_train, num_workers=0
@@ -244,6 +441,9 @@ class DataPipeline:
             df = df.rename(columns={'date': 'timestamp'})
         df['asset_id'] = asset_id
         df = features.add_technical_features(df)
+        # Phase 3+: add volume features for multimodal
+        if self.multimodal_cfg.get('enable_volume_features', False):
+            df = features.add_volume_features(df)
         df = df.dropna(subset=self.data_cfg.get('feature_cols', []))
         if len(df) < seq_len:
             raise RuntimeError(

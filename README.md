@@ -52,6 +52,14 @@ Key design decisions:
    - **Required**: `SUPABASE_URL`, `SUPABASE_KEY`
    - **Optional**: `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`
 
+### Supabase ticker migration
+
+If `/tickers` returns a Supabase `PGRST205` error, apply the migration in
+`supabase/migrations/202603150001_create_public_tickers.sql`.
+
+- Supabase SQL Editor: paste the migration and run it.
+- Supabase CLI (if configured in this repo): `supabase db push`
+
 ## Running the API
 
 ```bash

@@ -1,6 +1,6 @@
 """
-MSE, Sharpe surrogate (batch-level and rolling-window), and composite
-forecast loss (MSE + λ·Sharpe with warmup).
+MSE, Sharpe surrogate (batch-level and rolling-window), composite forecast loss
+(MSE + λ·Sharpe with warmup), and WeightedCEFocalLoss for LOB classification.
 """
 
 import logging
@@ -85,10 +85,14 @@ class RollingSharpeSurrogateLoss(nn.Module):
 
 
 class CompositeForecastLoss(nn.Module):
-    """MSE + λ·Sharpe surrogate; MSE-only for first warmup_epochs.
+    """MSE + λ·Sharpe surrogate + optional gate L1 penalty; MSE-only for first warmup_epochs.
 
     When *sharpe_window* > 0 the rolling-window variant is used; otherwise
     the original batch-level ``SharpeSurrogateLoss`` is used.
+
+    The ``lambda_gate_l1`` coefficient is stored here for the training loop
+    to use when adding the gate L1 penalty (which requires access to
+    ``model.gate_params``).
     """
 
     def __init__(
@@ -98,10 +102,12 @@ class CompositeForecastLoss(nn.Module):
         warmup_epochs: int = 3,
         annualization: int = 252,
         sharpe_window: int = 0,
+        lambda_gate_l1: float = 0.0,
     ):
         super().__init__()
         self.lambda_sharpe = lambda_sharpe
         self.warmup_epochs = warmup_epochs
+        self.lambda_gate_l1 = lambda_gate_l1
         self.mse = MSELossWrapper()
         if sharpe_window > 0:
             self.sharpe: nn.Module = RollingSharpeSurrogateLoss(
@@ -128,3 +134,68 @@ class CompositeForecastLoss(nn.Module):
             return l_mse
         l_sharpe = self.sharpe(y_hat, y_true)
         return l_mse + self.lambda_sharpe * l_sharpe
+
+
+class WeightedCEFocalLoss(nn.Module):
+    """Weighted Cross-Entropy + Focal loss for LOB classification.
+
+    L_total = L_ce + lambda_focal * L_focal
+
+    L_ce   = -w_c * log(p(y=c))  with per-class weights.
+    L_focal = -alpha * (1 - p_t)^gamma * log(p_t)  with uniform alpha=1.
+
+    Args:
+        class_weights: Per-class weight list/tensor (length == num_classes).
+        lambda_focal: Coefficient for focal loss term.
+        focal_gamma: Focusing parameter gamma (>= 0).
+        num_classes: Number of output classes (default 3).
+    """
+
+    def __init__(
+        self,
+        class_weights: list[float] | None = None,
+        lambda_focal: float = 0.25,
+        focal_gamma: float = 1.5,
+        num_classes: int = 3,
+    ) -> None:
+        super().__init__()
+        self.lambda_focal = lambda_focal
+        self.focal_gamma = focal_gamma
+        self.num_classes = num_classes
+
+        if class_weights is not None:
+            w = torch.tensor(class_weights, dtype=torch.float32)
+        else:
+            w = torch.ones(num_classes, dtype=torch.float32)
+        self.register_buffer('class_weights', w)
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        """Compute combined weighted CE + focal loss.
+
+        Args:
+            logits: [B, C] raw model output (un-softmaxed).
+            targets: [B] integer class labels in {0, ..., C-1}.
+
+        Returns:
+            Scalar loss tensor.
+        """
+        # Weighted cross-entropy
+        l_ce = nn.functional.cross_entropy(
+            logits,
+            targets,
+            weight=self.class_weights.to(logits.device),  # type: ignore[arg-type]
+        )
+
+        if self.lambda_focal == 0.0:
+            return l_ce
+
+        # Focal loss component
+        log_probs = nn.functional.log_softmax(logits, dim=-1)  # [B, C]
+        probs = torch.exp(log_probs)  # [B, C]
+        # p_t = probability of the true class
+        p_t = probs.gather(dim=1, index=targets.unsqueeze(1)).squeeze(1)  # [B]
+        log_p_t = log_probs.gather(dim=1, index=targets.unsqueeze(1)).squeeze(1)
+        focal_weight = (1.0 - p_t) ** self.focal_gamma
+        l_focal = -(focal_weight * log_p_t).mean()
+
+        return l_ce + self.lambda_focal * l_focal

@@ -1,0 +1,93 @@
+project:
+  name: market-maven
+  phase: 4
+
+task:
+  type: lob
+
+paths:
+  lob_raw_data_path: artifacts/data/lob_raw
+  lob_processed_dir: artifacts/data/phase4
+  checkpoints_dir: artifacts/checkpoints/phase4
+  reports_dir: artifacts/reports/phase4
+
+lob:
+  dataset_name: nasdaq_lob_v1
+  reference_dataset: fi2010
+  api_enabled: true
+  default_model: tlob_forecaster
+  levels: 10
+  seq_len: 100
+  horizon_events: 20
+  tick_size: 0.01
+  split:
+    train_end: "2024-06-30"
+    val_end: "2025-03-31"
+    test_end: "2025-12-31"
+  normalization:
+    mode: per_asset_rolling
+    rolling_window_events: 5000
+    clip: 6.0
+  labeling:
+    up_threshold_ticks: 1
+    down_threshold_ticks: -1
+  backtest:
+    min_edge: 0.10
+    hold_events: 20
+    fee_bps: 1.5
+    slippage_ticks: 0.2
+    max_spread_ticks: 5.0
+  streaming:
+    enabled: true
+    chunk_size: 100000
+    backend: hdf5
+
+model:
+  type: tlob_forecaster
+  levels: 10
+  channels: 4
+  aux_dim: 4
+  d_model: 128
+  spatial_heads: 4
+  temporal_heads: 4
+  layers: 3
+  ff_dim: 256
+  dropout: 0.1
+  num_classes: 3
+
+training:
+  device: cpu
+  epochs: 45
+  batch_size: 128
+  lr: 0.0008
+  weight_decay: 0.0001
+  grad_clip_norm: 1.0
+  early_stopping_patience: 8
+  loss:
+    type: weighted_ce_plus_focal
+    class_weights: [1.2, 0.8, 1.2]
+    lambda_focal: 0.25
+    focal_gamma: 1.5
+  seeds: [42, 123, 456, 789, 1024]
+  scheduler:
+    type: reduce_on_plateau
+    factor: 0.5
+    patience: 3
+    min_lr: 0.000001
+
+evaluation:
+  annualization_factor: 252
+  metrics:
+    - balanced_accuracy_3class
+    - macro_f1_3class
+    - execution_fill_rate
+    - avg_trade_pnl_ticks
+    - sharpe
+    - sortino
+    - max_drawdown
+  regime:
+    type: volatility_based
+    rolling_window_events: 10000
+
+api:
+  supported_models: [tlob_forecaster, lob_cnn]
