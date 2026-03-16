@@ -41,6 +41,15 @@ def create_app() -> FastAPI:
             config = {}
     else:
         config = {}
+    # Inject per-model checkpoint overrides so LSTM (phase0) and
+    # CNN-Transformer (phase1) are served simultaneously without editing YAMLs.
+    config.setdefault('model_checkpoints', {})
+    config['model_checkpoints'].setdefault(
+        'lstm_baseline', 'artifacts/checkpoints/phase0'
+    )
+    config['model_checkpoints'].setdefault(
+        'cnn_transformer', 'artifacts/checkpoints/phase1'
+    )
     app.state.config = config
     app.state.allow_legacy_prophet = config.get('api', {}).get(
         'allow_legacy_prophet', True

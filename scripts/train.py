@@ -12,6 +12,7 @@ import logging
 import random
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 import numpy as np
 import torch
@@ -222,7 +223,15 @@ def main() -> None:
     mlflow = _try_import_mlflow() if use_mlflow else None
     if mlflow and use_mlflow:
         tracking_uri = log_cfg.get('mlflow_tracking_uri', 'artifacts/mlruns')
-        Path(tracking_uri).mkdir(parents=True, exist_ok=True)
+        parsed_tracking_uri = urlparse(tracking_uri)
+        if parsed_tracking_uri.scheme in {'', 'file'}:
+            # For local file-based stores, ensure the target directory exists.
+            local_path = (
+                Path(parsed_tracking_uri.path)
+                if parsed_tracking_uri.scheme == 'file'
+                else Path(tracking_uri)
+            )
+            local_path.mkdir(parents=True, exist_ok=True)
         mlflow.set_tracking_uri(tracking_uri)
         experiment_name = cfg.get('project', {}).get('name', 'market-maven')
         mlflow.set_experiment(experiment_name)

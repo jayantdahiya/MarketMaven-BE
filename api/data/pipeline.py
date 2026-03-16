@@ -425,16 +425,24 @@ class DataPipeline:
             )
         seq_len = self.data_cfg.get('seq_len', 60)
         end = as_of_date or date.today()
-        start = end - timedelta(days=seq_len + 100)  # extra for warmup
+        # yfinance end is exclusive, so add 1 day to include the as_of_date itself
+        fetch_end = end + timedelta(days=1)
+        # Use 200 calendar days to safely cover seq_len trading days plus feature
+        # warmup (SMA-45 needs ~45 rows; 200 cal days ≈ 143 trading days).
+        # 100 calendar days was too tight — it returned only 109 trading rows
+        # against a threshold of 110 during holiday-heavy periods.
+        start = end - timedelta(days=seq_len + 200)
         ticker = yf.Ticker(asset_id)
         df = ticker.history(
             start=start.isoformat(),
-            end=end.isoformat(),
+            end=fetch_end.isoformat(),
             interval='1d',
             auto_adjust=True,
         )
-        if df is None or len(df) < seq_len + 50:
-            raise RuntimeError(f'Insufficient data for {asset_id} as of {as_of_date}')
+        # Only require seq_len + 60 rows here (warmup for feature engineering);
+        # the stricter seq_len check after dropna below is the real gate.
+        if df is None or len(df) < seq_len + 60:
+            raise RuntimeError(f'Insufficient data for {asset_id} as of {end}')
         df = df.reset_index()
         df.columns = [c.lower().replace(' ', '_') for c in df.columns]
         if 'date' in df.columns:

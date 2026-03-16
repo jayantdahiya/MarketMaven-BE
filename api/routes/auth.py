@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from api.schemas.auth import AuthResponse, LoginRequest, SignUpRequest
 
-router = APIRouter(tags=['auth'])
+router = APIRouter(prefix='/auth', tags=['auth'])
 
 
 @router.post('/signup', response_model=AuthResponse)

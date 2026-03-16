@@ -1,0 +1,140 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,300;1,9..40,400&family=DM+Mono:wght@300;400;500&display=swap');
+
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: 'DM Sans', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+
+  --color-background: #09090f;
+  --color-surface: #111118;
+  --color-surface-2: #18181f;
+  --color-border: #23232e;
+  --color-border-subtle: #1a1a24;
+
+  --color-foreground: #e8e8f0;
+  --color-muted: #6b6b80;
+  --color-muted-fg: #9090a8;
+
+  --color-amber: #f0c040;
+  --color-amber-dim: rgba(240,192,64,0.12);
+  --color-red: #ef4444;
+  --color-red-dim: rgba(239,68,68,0.12);
+  --color-green: #22c55e;
+  --color-green-dim: rgba(34,197,94,0.10);
+  --color-blue: #60a5fa;
+  --color-blue-dim: rgba(96,165,250,0.10);
+}
+
+:root {
+  /* shadcn HSL CSS variables */
+  --background: 240 10% 4%;
+  --foreground: 240 6% 90%;
+  --card: 240 10% 6%;
+  --card-foreground: 240 6% 90%;
+  --popover: 240 10% 6%;
+  --popover-foreground: 240 6% 90%;
+  --primary: 45 87% 59%;
+  --primary-foreground: 240 10% 4%;
+  --secondary: 240 8% 10%;
+  --secondary-foreground: 240 6% 70%;
+  --muted: 240 8% 10%;
+  --muted-foreground: 240 5% 55%;
+  --accent: 240 8% 12%;
+  --accent-foreground: 240 6% 90%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 240 8% 14%;
+  --input: 240 8% 14%;
+  --ring: 45 87% 59%;
+  --radius: 0.5rem;
+}
+
+* {
+  border-color: hsl(var(--border));
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: #09090f;
+  color: #e8e8f0;
+  font-family: 'DM Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  margin: 0;
+}
+
+/* Grain texture overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #23232e;
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #32323e;
+}
+
+/* Signal animations */
+@keyframes pulse-amber {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(240, 192, 64, 0.3); }
+  50% { box-shadow: 0 0 0 5px rgba(240, 192, 64, 0); }
+}
+.signal-long {
+  animation: pulse-amber 3s ease-in-out infinite;
+}
+
+/* Shimmer for skeleton */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #18181f 25%, #22222e 50%, #18181f 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+}
+
+/* Stagger reveal */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up {
+  animation: fade-up 0.5s ease-out forwards;
+  opacity: 0;
+}
+
+/* Card hover glow */
+.card-glow {
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.card-glow:hover {
+  box-shadow: 0 0 0 1px rgba(240, 192, 64, 0.15), 0 8px 32px rgba(0, 0, 0, 0.5);
+  border-color: rgba(240, 192, 64, 0.15) !important;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}

@@ -176,3 +176,6 @@ docs
 # MarketMaven artifacts (data, checkpoints, reports)
 artifacts/
 .DS_Store
+
+# MLflow database file
+mlflow.db

@@ -44,7 +44,7 @@ model:
   mlp_hidden: 64
 
 training:
-  device: cpu
+  device: mps  # Use 'cuda' if GPU is available, else 'cpu'
   epochs: 50
   batch_size: 64
   lr: 0.0007
@@ -82,7 +82,7 @@ acceptance:
 logging:
   experiment_tracker: mlflow
   run_name_template: "phase1_cnn_trans_seed_{seed}"
-  mlflow_tracking_uri: "artifacts/mlruns"
+  mlflow_tracking_uri: "sqlite:///mlflow.db"
 
 api:
   default_model: cnn_transformer
