@@ -215,6 +215,19 @@ def calculate_sma(close: pd.Series, window: int) -> pd.Series:
 
 ---
 
+## Documentation & Library References
+
+Always use Context7 proactively when any task involves library/API documentation, code generation, setup, or configuration steps — without waiting to be explicitly asked. This includes (but is not limited to):
+
+- Looking up API signatures, method options, or version-specific behavior for any third-party package
+- Generating code that depends on an external library (FastAPI, PyTorch, Pydantic, yfinance, Redis, Supabase, etc.)
+- Answering setup or installation questions
+- Verifying configuration patterns or migration guides
+
+**Workflow**: call `resolve-library-id` first to get the Context7 library ID, then `query-docs` with the relevant question before writing any library-dependent code.
+
+---
+
 ## Environment
 
 Copy `.env.example` → `.env`. Required: `SUPABASE_URL`, `SUPABASE_KEY`. Optional: `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`.
