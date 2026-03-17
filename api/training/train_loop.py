@@ -231,8 +231,13 @@ class Trainer:
         scaler_path: str,
         scaler_state: dict,
     ) -> dict:
-        """Run training; save best and last checkpoints. Return best_checkpoint_path and history."""
-        best_val_loss = float('inf')
+        """Run training; save best and last checkpoints. Return best_checkpoint_path and history.
+
+        Best checkpoint is selected by lowest val_mae (not val_loss) so that the
+        composite Sharpe surrogate loss cannot drive checkpoint selection toward a
+        collapsed constant-output model.  Early stopping also tracks val_mae.
+        """
+        best_val_mae = float('inf')
         patience_counter = 0
         history: list[dict] = []
         best_path = ''
@@ -256,8 +261,8 @@ class Trainer:
                 val_m['mae'],
                 val_m['rmse'],
             )
-            if val_m['loss'] < best_val_loss:
-                best_val_loss = val_m['loss']
+            if val_m['mae'] < best_val_mae:
+                best_val_mae = val_m['mae']
                 patience_counter = 0
                 best_path = str(
                     self.checkpoints_dir / run_id / f'best_epoch_{epoch:03d}.pt'

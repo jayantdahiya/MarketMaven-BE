@@ -39,21 +39,21 @@ model:
 
 training:
   device: mps
-  epochs: 40
+  epochs: 50
   batch_size: 64
   lr: 0.001
   weight_decay: 0.0001
   grad_clip_norm: 1.0
-  early_stopping_patience: 8
+  early_stopping_patience: 10
   loss:
     type: mse_plus_sharpe
-    lambda_sharpe: 0.1
+    lambda_sharpe: 0.0
     temperature: 0.02
-    warmup_epochs: 3
+    warmup_epochs: 0
   scheduler:
     type: reduce_lr_on_plateau
     factor: 0.5
-    patience: 3
+    patience: 4
     min_lr: 0.000001
   seeds: [42, 123, 456, 789, 1024]
 

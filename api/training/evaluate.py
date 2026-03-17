@@ -103,9 +103,22 @@ def write_reports(
     regime_df: pd.DataFrame,
     bt_df: pd.DataFrame,
     bt_summary: dict,
+    model_tag: str = '',
 ) -> None:
-    """Write metrics_summary.json, regime_metrics.csv, backtest_report.csv, backtest_summary.json."""
+    """Write metrics_summary.json, regime_metrics.csv, backtest_report.csv, backtest_summary.json.
+
+    Args:
+        report_dir: Directory to write reports into.
+        summary: Metrics summary dict from evaluate_checkpoint.
+        regime_df: Per-regime breakdown DataFrame.
+        bt_df: Per-bar backtest DataFrame.
+        bt_summary: Backtest summary dict.
+        model_tag: Optional model identifier (e.g. 'lstm_baseline', 'cnn_transformer') added
+            to metrics_summary.json under the 'model_tag' key for cross-phase comparisons.
+    """
     Path(report_dir).mkdir(parents=True, exist_ok=True)
+    if model_tag:
+        summary = {**summary, 'model_tag': model_tag}
     with open(Path(report_dir) / 'metrics_summary.json', 'w') as f:
         json.dump(summary, f, indent=2)
     regime_df.to_csv(Path(report_dir) / 'regime_metrics.csv', index=False)

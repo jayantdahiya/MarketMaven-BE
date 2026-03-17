@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client
 
 from api.data.pipeline import load_config
-from api.routes import alphas, auth, forecast, metrics, tickers
+from api.routes import alphas, auth, forecast, history, metrics, tickers
 from api.services.alpha_service import AlphaService
 from api.services.auth_service import AuthService
 from api.services.forecast_service import ForecastService
@@ -124,6 +124,7 @@ def create_app() -> FastAPI:
     app.include_router(tickers.router)
     app.include_router(metrics.router)
     app.include_router(alphas.router)
+    app.include_router(history.router)
 
     @app.get('/')
     def index():

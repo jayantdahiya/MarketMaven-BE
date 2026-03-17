@@ -79,6 +79,32 @@ export interface AlphaResponse {
   rationale: string | null;
 }
 
+// ─── History ─────────────────────────────────────────────────────────────────
+
+export interface ReturnPoint {
+  date: string;        // ISO YYYY-MM-DD
+  log_return: number;
+}
+
+export interface HistoricalReturnsResponse {
+  asset_id: string;
+  returns: ReturnPoint[];
+  rolling_volatility: ReturnPoint[] | null;
+}
+
+export interface PredictionPoint {
+  date: string;
+  predicted_return: number;
+  actual_return: number;
+  signal: ForecastSignal;
+}
+
+export interface HistoricalPredictionsResponse {
+  asset_id: string;
+  model: string;
+  predictions: PredictionPoint[];
+}
+
 // ─── UI helpers ─────────────────────────────────────────────────────────────
 
 export type UIMode = 'retail' | 'quant';

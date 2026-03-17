@@ -43,6 +43,7 @@ def main() -> None:
     pipeline = DataPipeline(cfg)
     loaders = pipeline.build_dataloaders(shuffle_train=False)
     model_cfg = cfg.get('model', {})
+    model_tag = model_cfg.get('type', '')
     model = create_model(model_cfg.get('type', 'lstm_baseline'), model_cfg)
     scaler = pipeline._scaler
     if scaler is None:
@@ -57,6 +58,7 @@ def main() -> None:
         results['regime_df'],
         results['bt_df'],
         results['bt_summary'],
+        model_tag=model_tag,
     )
     print(f'Reports written to {report_dir}')
 

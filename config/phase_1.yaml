@@ -53,9 +53,9 @@ training:
   early_stopping_patience: 10
   loss:
     type: mse_plus_sharpe
-    lambda_sharpe: 0.1
+    lambda_sharpe: 0.0
     temperature: 0.02
-    warmup_epochs: 3
+    warmup_epochs: 0
   scheduler:
     type: cosine_annealing
     T_max: 50
