@@ -75,6 +75,26 @@ docker compose up
 
 Interactive docs at **http://localhost:8000/docs**
 
+## Running Frontend + Backend Together
+
+Use the root startup script to run both services in one command:
+
+```bash
+./start.sh
+```
+
+This starts:
+- Backend API at `http://localhost:8000`
+- Frontend app at `http://localhost:3000`
+
+Press `Ctrl+C` to stop both processes.
+
+If backend startup fails with `uvicorn: command not found`, install dependencies first:
+
+```bash
+uv sync
+```
+
 ## API Endpoints
 
 | Method | Path | Description |
