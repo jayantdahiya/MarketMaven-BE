@@ -50,6 +50,10 @@ def create_app() -> FastAPI:
     config['model_checkpoints'].setdefault(
         'cnn_transformer', 'artifacts/checkpoints/phase1'
     )
+    config['model_checkpoints'].setdefault('mamba_ssm', 'artifacts/checkpoints/phase2')
+    config['model_checkpoints'].setdefault(
+        'cnn_transformer_multimodal', 'artifacts/checkpoints/phase3'
+    )
     app.state.config = config
     app.state.allow_legacy_prophet = config.get('api', {}).get(
         'allow_legacy_prophet', True

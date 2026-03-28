@@ -83,6 +83,18 @@ Use the root startup script to run both services in one command:
 ./start.sh
 ```
 
+To run frontend with CUDA Docker backend (for Phase 2 `mamba_ssm`):
+
+```bash
+./start.sh --cuda
+```
+
+You can also set env var style:
+
+```bash
+BACKEND_MODE=cuda ./start.sh
+```
+
 This starts:
 - Backend API at `http://localhost:8000`
 - Frontend app at `http://localhost:3000`
@@ -189,6 +201,29 @@ git config core.hooksPath .githooks
 docker build -t market-maven-be .
 docker compose up    # Mounts ./config and ./artifacts
 ```
+
+### CUDA Docker (required for Phase 2 `mamba_ssm` inference)
+
+Phase 2 checkpoints trained with the CUDA Mamba backend require `mamba-ssm`
+available at runtime. If you want to serve `mamba_ssm`, run the CUDA image:
+
+```bash
+docker compose -f docker-compose.cuda.yml up --build
+```
+
+Requirements:
+- Linux host with NVIDIA GPU
+- NVIDIA Container Toolkit installed
+
+Quick verification inside container:
+
+```bash
+docker exec -it market-maven-be-cuda python -c "from mamba_ssm import Mamba; print('mamba_ssm_ok')"
+```
+
+If CUDA backend is unavailable, the API can still serve `lstm_baseline` and
+`cnn_transformer`, but `mamba_ssm` checkpoints may fail to load due to backend
+state-dict incompatibility.
 
 ## Configuration
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import useSWR from 'swr';
@@ -722,8 +722,8 @@ export default function ForecastPage() {
                         value: `${(metrics.max_drawdown * 100).toFixed(2)}%`,
                         desc: 'Peak-to-trough equity drawdown',
                       },
-                    ].map(({ metric, value, desc }, rowIdx, arr) => (
-                      <>
+                    ].map(({ metric, value, desc }, rowIdx) => (
+                      <Fragment key={metric}>
                         {rowIdx > 0 && (
                           <tr key={`sep-${metric}`}>
                             <td colSpan={3} className="p-0">
@@ -731,7 +731,7 @@ export default function ForecastPage() {
                             </td>
                           </tr>
                         )}
-                        <tr key={metric}>
+                        <tr>
                           <td className="py-2.5 text-xs text-[#e8e8f0]">
                             <MetricLabel label={metric} description={METRIC_DESCRIPTIONS[metric]} />
                           </td>
@@ -740,7 +740,7 @@ export default function ForecastPage() {
                           </td>
                           <td className="py-2.5 text-xs text-[#6b6b80]">{desc}</td>
                         </tr>
-                      </>
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>

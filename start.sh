@@ -3,8 +3,20 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+BACKEND_MODE=${BACKEND_MODE:-local}
+
+if [ "${1:-}" = "--cuda" ]; then
+  BACKEND_MODE=cuda
+fi
 
 cleanup() {
+  if [ "${BACKEND_MODE}" = "cuda" ]; then
+    (
+      cd "$ROOT_DIR"
+      docker compose -f docker-compose.cuda.yml down >/dev/null 2>&1 || true
+    )
+  fi
+
   if [ -n "${BACKEND_PID:-}" ]; then
     kill "$BACKEND_PID" 2>/dev/null || true
   fi
@@ -16,10 +28,16 @@ cleanup() {
 
 trap cleanup INT TERM EXIT
 
-echo 'Starting backend on http://localhost:8000'
+if [ "${BACKEND_MODE}" = "cuda" ]; then
+  echo 'Starting backend with CUDA Docker on http://localhost:8000'
+else
+  echo 'Starting backend on http://localhost:8000'
+fi
 (
   cd "$ROOT_DIR"
-  if [ -x "$ROOT_DIR/.venv/bin/uvicorn" ]; then
+  if [ "${BACKEND_MODE}" = "cuda" ]; then
+    docker compose -f docker-compose.cuda.yml up --build
+  elif [ -x "$ROOT_DIR/.venv/bin/uvicorn" ]; then
     "$ROOT_DIR/.venv/bin/uvicorn" api.app:app --host 0.0.0.0 --port 8000 --reload
   elif command -v uv >/dev/null 2>&1; then
     uv run uvicorn api.app:app --host 0.0.0.0 --port 8000 --reload
