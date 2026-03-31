@@ -13,6 +13,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from api.data import normalization
+from api.training.train_loop import forward_model_with_meta
 from api.training import backtest, checkpointing, metrics
 
 logger = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ def evaluate_checkpoint(
         for batch in test_loader:
             x, y, meta = batch
             x = x.to(device)
-            y_hat = model(x)
+            y_hat = forward_model_with_meta(model, x, meta, torch.device(device))
             b = x.size(0)
             all_pred.append(y_hat.cpu().numpy().ravel())
             all_true.append(y.numpy().ravel())

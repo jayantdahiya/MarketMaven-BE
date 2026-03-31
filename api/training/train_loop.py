@@ -31,6 +31,70 @@ _BATCH_SCHEDULERS = (OneCycleLR,)
 _AnyScheduler = LRScheduler | ReduceLROnPlateau
 
 
+def extract_graph_tensors(
+    meta: dict | list,
+    device: torch.device,
+) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+    """Return ``(asset_index, graph_context)`` from the batch meta dict."""
+    if isinstance(meta, dict):
+        if 'asset_index' in meta:
+            ai_list = meta['asset_index']
+            if isinstance(ai_list, (list, tuple)):
+                asset_index = torch.tensor(ai_list, dtype=torch.long, device=device)
+            elif isinstance(ai_list, torch.Tensor):
+                asset_index = ai_list.to(device)
+            else:
+                asset_index = torch.tensor([ai_list], dtype=torch.long, device=device)
+        else:
+            asset_index = None
+
+        if 'graph_context' in meta:
+            gc_list = meta['graph_context']
+            if isinstance(gc_list, torch.Tensor):
+                gc = gc_list[0] if gc_list.dim() == 3 else gc_list
+                graph_context = gc.to(device)
+            elif isinstance(gc_list, (list, tuple)):
+                graph_context = gc_list[0].to(device) if gc_list else None
+            else:
+                graph_context = None
+        else:
+            graph_context = None
+
+        return asset_index, graph_context
+    return None, None
+
+
+def extract_modality_mask(
+    meta: dict | list,
+    device: torch.device,
+) -> torch.Tensor | None:
+    """Return ``modality_mask`` tensor ``[B, M]`` from the batch meta dict."""
+    if isinstance(meta, dict) and 'modality_mask' in meta:
+        mask = meta['modality_mask']
+        if isinstance(mask, torch.Tensor):
+            return mask.to(device)
+        if isinstance(mask, (list, tuple)):
+            return torch.stack(mask).to(device)
+    return None
+
+
+def forward_model_with_meta(
+    model: torch.nn.Module,
+    x: torch.Tensor,
+    meta: dict | list,
+    device: torch.device,
+) -> torch.Tensor:
+    """Call *model* with graph-context and/or modality mask when present."""
+    asset_index, graph_context = extract_graph_tensors(meta, device)
+    modality_mask = extract_modality_mask(meta, device)
+
+    if asset_index is not None:
+        return model(x, asset_index=asset_index, graph_context=graph_context)
+    if modality_mask is not None:
+        return model(x, modality_mask=modality_mask)
+    return model(x)
+
+
 class Trainer:
     def __init__(
         self,
@@ -89,37 +153,7 @@ class Trainer:
         lists (one element per sample in the batch).  When neither field is
         present, both returned values are ``None``.
         """
-        if isinstance(meta, dict):
-            if 'asset_index' in meta:
-                ai_list = meta['asset_index']
-                if isinstance(ai_list, (list, tuple)):
-                    asset_index = torch.tensor(ai_list, dtype=torch.long, device=device)
-                elif isinstance(ai_list, torch.Tensor):
-                    asset_index = ai_list.to(device)
-                else:
-                    asset_index = torch.tensor(
-                        [ai_list], dtype=torch.long, device=device
-                    )
-            else:
-                asset_index = None
-
-            if 'graph_context' in meta:
-                gc_list = meta['graph_context']
-                if isinstance(gc_list, torch.Tensor):
-                    # DataLoader stacks identical per-sample [A, G] tensors
-                    # into [B, A, G]; take first slice to recover [A, G].
-                    gc = gc_list[0] if gc_list.dim() == 3 else gc_list
-                    graph_context = gc.to(device)
-                elif isinstance(gc_list, (list, tuple)):
-                    # Each element is the same shared tensor; take the first
-                    graph_context = gc_list[0].to(device) if gc_list else None
-                else:
-                    graph_context = None
-            else:
-                graph_context = None
-
-            return asset_index, graph_context
-        return None, None
+        return extract_graph_tensors(meta, device)
 
     @staticmethod
     def _extract_modality_mask(
@@ -131,13 +165,7 @@ class Trainer:
         The default collation stacks per-sample ``[M]`` tensors into
         ``[B, M]``.  Returns ``None`` when the field is absent.
         """
-        if isinstance(meta, dict) and 'modality_mask' in meta:
-            mask = meta['modality_mask']
-            if isinstance(mask, torch.Tensor):
-                return mask.to(device)
-            if isinstance(mask, (list, tuple)):
-                return torch.stack(mask).to(device)
-        return None
+        return extract_modality_mask(meta, device)
 
     def _model_forward(
         self,
@@ -145,16 +173,7 @@ class Trainer:
         meta: dict | list,
     ) -> torch.Tensor:
         """Call the model, passing graph tensors and/or multimodal mask when available."""
-        asset_index, graph_context = self._extract_graph_tensors(meta, self.device)
-        modality_mask = self._extract_modality_mask(meta, self.device)
-
-        # Phase 2: graph-context path
-        if asset_index is not None:
-            return self.model(x, asset_index=asset_index, graph_context=graph_context)
-        # Phase 3: multimodal path
-        if modality_mask is not None:
-            return self.model(x, modality_mask=modality_mask)
-        return self.model(x)
+        return forward_model_with_meta(self.model, x, meta, self.device)
 
     def _train_epoch(self, loader: DataLoader) -> dict:
         self.model.train()

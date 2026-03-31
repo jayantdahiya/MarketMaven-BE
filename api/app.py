@@ -2,6 +2,7 @@
 FastAPI app factory: CORS, routers, state (forecast_service, auth_service, ticker_service).
 """
 
+import logging
 import os
 from pathlib import Path
 
@@ -18,8 +19,49 @@ from api.services.auth_service import AuthService
 from api.services.forecast_service import ForecastService
 from api.services.ticker_service import TickerService
 
+logger = logging.getLogger(__name__)
 
-def create_app() -> FastAPI:
+DEFAULT_CONFIG_PATH = Path('config/phase_0.yaml')
+
+
+def resolve_config_path(config_path: str | None = None) -> Path:
+    """Resolve runtime config path from arg, env, or the default phase config."""
+    if config_path:
+        return Path(config_path)
+    env_path = os.environ.get('MARKET_MAVEN_CONFIG')
+    if env_path:
+        return Path(env_path)
+    return DEFAULT_CONFIG_PATH
+
+
+def load_runtime_config(config_path: str | None = None) -> tuple[dict, Path]:
+    """Load the runtime config and return both config dict and resolved path."""
+    resolved_path = resolve_config_path(config_path)
+    if not resolved_path.exists():
+        if resolved_path == DEFAULT_CONFIG_PATH:
+            logger.warning('Runtime config not found at %s; using empty config', resolved_path)
+            return {}, resolved_path
+        raise FileNotFoundError(f'Runtime config not found: {resolved_path}')
+    return load_config(str(resolved_path)), resolved_path
+
+
+def _inject_checkpoint_defaults(config: dict) -> dict:
+    """Inject default checkpoint roots so multiple daily models can coexist."""
+    config.setdefault('model_checkpoints', {})
+    config['model_checkpoints'].setdefault(
+        'lstm_baseline', 'artifacts/checkpoints/phase0'
+    )
+    config['model_checkpoints'].setdefault(
+        'cnn_transformer', 'artifacts/checkpoints/phase1'
+    )
+    config['model_checkpoints'].setdefault('mamba_ssm', 'artifacts/checkpoints/phase2')
+    config['model_checkpoints'].setdefault(
+        'cnn_transformer_multimodal', 'artifacts/checkpoints/phase3'
+    )
+    return config
+
+
+def create_app(config_path: str | None = None) -> FastAPI:
     load_dotenv()
     app = FastAPI(title='Market Maven API')
     origins = os.environ.get(
@@ -33,28 +75,14 @@ def create_app() -> FastAPI:
         allow_methods=['*'],
         allow_headers=['*'],
     )
-    config_path = Path('config/phase_0.yaml')
-    if config_path.exists():
-        try:
-            config = load_config(str(config_path))
-        except Exception:
-            config = {}
-    else:
-        config = {}
-    # Inject per-model checkpoint overrides so LSTM (phase0) and
-    # CNN-Transformer (phase1) are served simultaneously without editing YAMLs.
-    config.setdefault('model_checkpoints', {})
-    config['model_checkpoints'].setdefault(
-        'lstm_baseline', 'artifacts/checkpoints/phase0'
-    )
-    config['model_checkpoints'].setdefault(
-        'cnn_transformer', 'artifacts/checkpoints/phase1'
-    )
-    config['model_checkpoints'].setdefault('mamba_ssm', 'artifacts/checkpoints/phase2')
-    config['model_checkpoints'].setdefault(
-        'cnn_transformer_multimodal', 'artifacts/checkpoints/phase3'
-    )
+    try:
+        config, resolved_config_path = load_runtime_config(config_path)
+    except Exception:
+        logger.exception('Failed to load runtime config')
+        raise
+    config = _inject_checkpoint_defaults(config)
     app.state.config = config
+    app.state.config_path = str(resolved_config_path)
     app.state.allow_legacy_prophet = config.get('api', {}).get(
         'allow_legacy_prophet', True
     )
@@ -82,6 +110,8 @@ def create_app() -> FastAPI:
             port=int(os.environ.get('REDIS_PORT', '6379')),
             password=os.environ.get('REDIS_PASSWORD') or None,
             ssl=redis_ssl,
+            socket_connect_timeout=1.0,
+            socket_timeout=1.0,
         )
         redis_client.ping()
     except Exception:
@@ -129,6 +159,25 @@ def create_app() -> FastAPI:
     app.include_router(metrics.router)
     app.include_router(alphas.router)
     app.include_router(history.router)
+
+    phase = config.get('project', {}).get('phase', 'unknown')
+    default_model = config.get('api', {}).get(
+        'default_model',
+        config.get('model', {}).get('type', 'unknown'),
+    )
+    capabilities = {
+        'legacy_prophet': app.state.allow_legacy_prophet,
+        'multimodal': bool(config.get('multimodal', {}).get('enabled', False)),
+        'alpha_service': app.state.alpha_service is not None,
+        'lob': bool(config.get('lob', {}).get('api_enabled', False)),
+    }
+    logger.info(
+        'Runtime config loaded path=%s phase=%s default_model=%s capabilities=%s',
+        resolved_config_path,
+        phase,
+        default_model,
+        capabilities,
+    )
 
     @app.get('/')
     def index():

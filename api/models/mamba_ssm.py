@@ -60,6 +60,7 @@ class MambaBlockFallback(nn.Module):
         self.d_model = d_model
         self.d_state = d_state
         self.d_inner = d_model * expand
+        self.dt_rank = max(1, (d_model + 15) // 16)
 
         # Step 1: input projection → (x_branch, z_gate)
         self.in_proj = nn.Linear(d_model, self.d_inner * 2, bias=False)
@@ -75,7 +76,10 @@ class MambaBlockFallback(nn.Module):
         )
 
         # Step 4: SSM parameter projections
-        self.x_proj = nn.Linear(self.d_inner, d_state * 2 + 1, bias=False)
+        self.x_proj = nn.Linear(
+            self.d_inner, self.dt_rank + d_state * 2, bias=False
+        )
+        self.dt_proj = nn.Linear(self.dt_rank, self.d_inner, bias=True)
 
         # Learnable log-diagonal state matrix A and skip D
         self.A_log = nn.Parameter(
@@ -116,10 +120,11 @@ class MambaBlockFallback(nn.Module):
         x = F.silu(x)
 
         # 4. SSM parameter projections from x → dt, B_ssm, C_ssm
-        ssm_params = self.x_proj(x)  # [B, T, 2*N + 1]
-        dt = F.softplus(ssm_params[..., :1].squeeze(-1))  # [B, T]
-        B_ssm = ssm_params[..., 1 : 1 + self.d_state]  # [B, T, N]
-        C_ssm = ssm_params[..., 1 + self.d_state :]  # [B, T, N]
+        ssm_params = self.x_proj(x)  # [B, T, dt_rank + 2*N]
+        dt_rank = ssm_params[..., : self.dt_rank]  # [B, T, R]
+        dt = F.softplus(self.dt_proj(dt_rank))  # [B, T, d_inner]
+        B_ssm = ssm_params[..., self.dt_rank : self.dt_rank + self.d_state]
+        C_ssm = ssm_params[..., self.dt_rank + self.d_state :]
 
         # 5. Selective scan (sequential — functional but slow)
         A = -torch.exp(self.A_log)  # [d_inner, N]
@@ -138,7 +143,7 @@ class MambaBlockFallback(nn.Module):
     def _selective_scan(
         self,
         x: torch.Tensor,  # [B, T, D]
-        dt: torch.Tensor,  # [B, T]
+        dt: torch.Tensor,  # [B, T, D]
         A: torch.Tensor,  # [D, N]
         B_ssm: torch.Tensor,  # [B, T, N]
         C_ssm: torch.Tensor,  # [B, T, N]
@@ -154,10 +159,10 @@ class MambaBlockFallback(nn.Module):
         dtype = x.dtype
 
         # Discretise: dA = exp(A * dt), dB = dt * B_ssm
-        dt_expanded = dt.unsqueeze(-1)  # [B, T, 1]
-        dA = torch.exp(A.unsqueeze(0).unsqueeze(0) * dt_expanded.unsqueeze(-1))
+        dt_expanded = dt.unsqueeze(-1)  # [B, T, D, 1]
+        dA = torch.exp(A.unsqueeze(0).unsqueeze(0) * dt_expanded)
         # dA: [B, T, D, N]
-        dB = dt_expanded.unsqueeze(-1) * B_ssm.unsqueeze(2)  # [B, T, D, N]
+        dB = dt_expanded * B_ssm.unsqueeze(2)  # [B, T, D, N]
 
         h = torch.zeros(B_batch, D, N, device=device, dtype=dtype)
         ys = []

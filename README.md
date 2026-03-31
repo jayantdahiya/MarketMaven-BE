@@ -2,15 +2,27 @@
 
 Production-grade FastAPI backend for stock market forecasting with PyTorch deep learning models. Serves trained model predictions via REST API — no training at request time.
 
-Currently implements three model architectures across three completed phases:
+## Current State
 
-| Phase | Model | Architecture | Status |
-|-------|-------|-------------|--------|
-| 0 | `lstm_baseline` | 2-layer LSTM + LayerNorm + Dropout + Linear head | Complete |
-| 1 | `cnn_transformer` | 2x Conv1D + 3x TransformerEncoder + attention pooling + MLP | Complete |
-| 2 | `mamba_ssm` | 4x MambaBlock (S4D selective scan) + asset-correlation graph fusion + MLP | Complete |
-| 3 | Multimodal | Sentiment, VIX, LLM-generated alphas, gated modality fusion | Planned |
-| 4 | LOB / Microstructure | Limit Order Book pipeline + TLOBForecaster for intraday | Planned |
+`MARKET_MAVEN_CONFIG` is now the supported way to choose the active backend config at startup. If unset, the app defaults to `config/phase_0.yaml`.
+
+Phase status is tracked across four dimensions:
+- `code implemented`: code paths, schemas, services, and tests exist in the repo
+- `default-enabled`: available from the default app boot path without switching to a different config family
+- `artifact-validated`: this workspace contains generated checkpoints/reports for the phase
+- `acceptance-passed`: the current leaderboard marks the phase as meeting its acceptance gate
+
+Latest source of truth:
+- [Current state](/Users/Work/Desktop/Personal/MarketMaven-BE/docs/CURRENT-STATE.md)
+- [Leaderboard artifact](/Users/Work/Desktop/Personal/MarketMaven-BE/artifacts/reports/leaderboard.json)
+
+| Phase | Model / Scope | Code Implemented | Default-Enabled | Artifact-Validated | Acceptance-Passed | Current Status |
+|-------|---------------|------------------|-----------------|--------------------|-------------------|----------------|
+| 0 | `lstm_baseline` | Yes | Yes | Yes | No | Stable baseline, retained for comparison |
+| 1 | `cnn_transformer` | Yes | Yes | Yes | No | Recommended runtime phase |
+| 2 | `mamba_ssm` | Yes | Yes | Yes | No | Experimental; not recommended for runtime |
+| 3 | Multimodal | Yes | No | No | No | Implemented in code, not yet validated |
+| 4 | LOB / Microstructure | Yes | No | No | No | Implemented in code, not yet validated |
 
 Each phase produces a self-contained, deployable increment. Rollback between phases is config-only.
 
@@ -66,6 +78,9 @@ If `/tickers` returns a Supabase `PGRST205` error, apply the migration in
 # Development with hot reload
 uvicorn api.app:app --host 0.0.0.0 --port 8000 --reload
 
+# Pick a non-default config explicitly
+MARKET_MAVEN_CONFIG=config/phase_1.yaml uvicorn api.app:app --host 0.0.0.0 --port 8000 --reload
+
 # Or via script
 python api/main.py
 
@@ -113,6 +128,8 @@ uv sync
 |--------|------|-------------|
 | POST | `/forecast/daily` | Daily return forecast. Body: `asset_id`, `model` (`lstm_baseline`, `cnn_transformer`, `mamba_ssm`, or `prophet`), optional `horizon_days`, `as_of_date` |
 | GET | `/prophet` | Legacy Prophet forecast. Query: `ticker` |
+| POST | `/forecast/multimodal` | Multimodal forecast route; only active when the loaded config enables Phase 3 |
+| POST | `/forecast/lob` | LOB forecast route; only active when the loaded config enables Phase 4 |
 | POST | `/signup`, `/login` | Auth (Supabase) |
 | GET | `/tickers` | Ticker list (Supabase + optional Redis cache) |
 | GET | `/metrics/latest` | Latest evaluation metrics (MAE, RMSE, Sharpe) |
@@ -138,7 +155,11 @@ python scripts/evaluate.py --config config/phase_0.yaml \
   --checkpoint artifacts/checkpoints/phase0/seed_42_*/best_epoch_*.pt
 
 # 4. Cross-model benchmark
-python scripts/benchmark.py
+python scripts/benchmark.py \
+  --phase0-reports artifacts/reports/phase0 \
+  --phase1-reports artifacts/reports/phase1 \
+  --phase2-reports artifacts/reports/phase2 \
+  --output artifacts/reports/leaderboard.json
 ```
 
 ## Models
@@ -164,7 +185,7 @@ Four MambaBlock layers using selective state-space modeling (S4D). Optionally fu
 - **CPU/MPS**: Falls back to pure-PyTorch S4D implementation automatically
 - **Graph features**: degree centrality, 20-day rolling return mean, 20-day rolling volatility
 
-Acceptance: MAE <= 0.99 x Phase1 MAE, Sharpe >= Phase1 Sharpe + 0.05
+Current repo status: implemented and artifact-validated, but the latest leaderboard does not pass the Phase 2 acceptance gate. Treat it as experimental until a dedicated hardening pass lands.
 
 ## Tests
 

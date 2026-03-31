@@ -1,4 +1,6 @@
-"""Integration tests for Phase 2 benchmark — 3-way comparison (LSTM, CNN-Trans, Mamba)."""
+"""Integration tests for the Phase 2.5 three-phase benchmark leaderboard."""
+
+from __future__ import annotations
 
 import json
 import subprocess
@@ -23,176 +25,134 @@ def benchmark_3way_dirs(tmp_path):
     phase1_dir = tmp_path / 'phase1'
     phase2_dir = tmp_path / 'phase2'
 
-    # Phase 0 — LSTM baseline
     p0_metrics = {
-        'mae': 0.0227,
-        'rmse': 0.0268,
-        'sharpe': 0.8217,
+        'mae': 0.0110,
+        'rmse': 0.0160,
+        'sharpe': 0.70,
         'sortino': 1.05,
         'max_drawdown': -0.12,
     }
-    _write_seed_metrics(phase0_dir, 'seed_42', p0_metrics)
-    _write_seed_metrics(
-        phase0_dir, 'seed_123', {**p0_metrics, 'mae': 0.0230, 'rmse': 0.0270}
-    )
-
-    # Phase 1 — CNN-Trans
     p1_metrics = {
-        'mae': 0.0200,
-        'rmse': 0.0240,
-        'sharpe': 1.0000,
+        'mae': 0.0100,
+        'rmse': 0.0150,
+        'sharpe': 0.95,
         'sortino': 1.20,
         'max_drawdown': -0.10,
     }
-    _write_seed_metrics(phase1_dir, 'seed_42', p1_metrics)
-    _write_seed_metrics(
-        phase1_dir, 'seed_123', {**p1_metrics, 'mae': 0.0205, 'rmse': 0.0245}
-    )
-
-    # Phase 2 — Mamba (better than Phase 1)
     p2_metrics = {
-        'mae': 0.0190,
-        'rmse': 0.0230,
-        'sharpe': 1.1000,
+        'mae': 0.0095,
+        'rmse': 0.0147,
+        'sharpe': 1.05,
         'sortino': 1.35,
         'max_drawdown': -0.08,
     }
-    _write_seed_metrics(phase2_dir, 'seed_42', p2_metrics)
-    _write_seed_metrics(
-        phase2_dir, 'seed_123', {**p2_metrics, 'mae': 0.0195, 'rmse': 0.0235}
-    )
+
+    for seed in ['seed_42', 'seed_123', 'seed_456']:
+        _write_seed_metrics(phase0_dir, seed, p0_metrics)
+        _write_seed_metrics(phase1_dir, seed, p1_metrics)
+        _write_seed_metrics(phase2_dir, seed, p2_metrics)
 
     return phase0_dir, phase1_dir, phase2_dir
 
 
-def test_benchmark_includes_all_three_models(benchmark_3way_dirs, tmp_path):
-    """benchmark.py should produce reports for all supplied phase directories."""
+def _run_benchmark(
+    phase0_dir: Path,
+    phase1_dir: Path,
+    phase2_dir: Path,
+    output_path: Path,
+):
+    return subprocess.run(
+        [
+            sys.executable,
+            'scripts/benchmark.py',
+            '--phase0-reports',
+            str(phase0_dir),
+            '--phase1-reports',
+            str(phase1_dir),
+            '--phase2-reports',
+            str(phase2_dir),
+            '--output',
+            str(output_path),
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_benchmark_includes_all_three_models(benchmark_3way_dirs, tmp_path) -> None:
+    """benchmark.py should emit summaries for all three daily phases."""
     phase0_dir, phase1_dir, phase2_dir = benchmark_3way_dirs
     output_path = tmp_path / 'report_3way.json'
 
-    result = subprocess.run(
-        [
-            sys.executable,
-            'scripts/benchmark.py',
-            '--phase0-reports',
-            str(phase0_dir),
-            '--phase1-reports',
-            str(phase1_dir),
-            '--output',
-            str(output_path),
-        ],
-        capture_output=True,
-        text=True,
-    )
-    # Exit 0 (pass) or 1 (fail) both acceptable
-    assert result.returncode in (0, 1), (
-        f'Unexpected exit code {result.returncode}.\nstderr: {result.stderr}'
-    )
-    assert output_path.exists(), 'Output JSON file was not created'
+    result = _run_benchmark(phase0_dir, phase1_dir, phase2_dir, output_path)
+
+    assert result.returncode == 0, result.stderr
+    assert output_path.exists()
 
     with open(output_path) as f:
         report = json.load(f)
 
-    assert 'phase_0_lstm' in report, 'Missing phase_0_lstm in report'
-    assert 'phase_1_cnn_transformer' in report, 'Missing phase_1_cnn_transformer'
+    assert 'phase_0_lstm' in report
+    assert 'phase_1_cnn_transformer' in report
+    assert 'phase_2_mamba_ssm' in report
+    assert report['recommended_phase'] == 'phase_2_mamba_ssm'
 
 
-def test_benchmark_3way_all_metrics_present(benchmark_3way_dirs, tmp_path):
-    """Each model entry must contain all tracked metric keys with mean/std."""
-    phase0_dir, phase1_dir, _ = benchmark_3way_dirs
-    output_path = tmp_path / 'report_metrics.json'
+def test_benchmark_emits_status_fields(benchmark_3way_dirs, tmp_path) -> None:
+    """Each phase summary must include implemented/validated/acceptance/runtime flags."""
+    phase0_dir, phase1_dir, phase2_dir = benchmark_3way_dirs
+    output_path = tmp_path / 'report_status.json'
 
-    subprocess.run(
-        [
-            sys.executable,
-            'scripts/benchmark.py',
-            '--phase0-reports',
-            str(phase0_dir),
-            '--phase1-reports',
-            str(phase1_dir),
-            '--output',
-            str(output_path),
-        ],
-        capture_output=True,
-        text=True,
-    )
+    _run_benchmark(phase0_dir, phase1_dir, phase2_dir, output_path)
 
     with open(output_path) as f:
         report = json.load(f)
 
-    for model_key in ['phase_0_lstm', 'phase_1_cnn_transformer']:
-        summary = report[model_key]
-        for metric in ['mae', 'rmse', 'sharpe', 'sortino', 'max_drawdown']:
-            assert metric in summary, f'{model_key} missing metric: {metric}'
-            agg = summary[metric]
-            assert 'mean' in agg and 'std' in agg, (
-                f'{model_key}.{metric} missing mean/std'
-            )
+    for model_key in [
+        'phase_0_lstm',
+        'phase_1_cnn_transformer',
+        'phase_2_mamba_ssm',
+    ]:
+        status = report[model_key]['status']
+        assert set(status) == {
+            'implemented',
+            'validated',
+            'acceptance_passed',
+            'recommended_for_runtime',
+        }
+        assert status['implemented'] is True
+        assert status['validated'] is True
 
 
-def test_benchmark_3way_acceptance_flags(benchmark_3way_dirs, tmp_path):
-    """Acceptance block must contain pass/fail flags."""
-    phase0_dir, phase1_dir, _ = benchmark_3way_dirs
-    output_path = tmp_path / 'report_accept.json'
+def test_benchmark_emits_pairwise_acceptance_and_seed_counts(
+    benchmark_3way_dirs, tmp_path
+) -> None:
+    """Report must contain pairwise acceptance plus per-seed pass counts."""
+    phase0_dir, phase1_dir, phase2_dir = benchmark_3way_dirs
+    output_path = tmp_path / 'report_acceptance.json'
 
-    subprocess.run(
-        [
-            sys.executable,
-            'scripts/benchmark.py',
-            '--phase0-reports',
-            str(phase0_dir),
-            '--phase1-reports',
-            str(phase1_dir),
-            '--output',
-            str(output_path),
-        ],
-        capture_output=True,
-        text=True,
-    )
+    _run_benchmark(phase0_dir, phase1_dir, phase2_dir, output_path)
 
     with open(output_path) as f:
         report = json.load(f)
 
-    assert 'acceptance' in report
-    acceptance = report['acceptance']
-    assert 'overall_pass' in acceptance
-    assert isinstance(acceptance['overall_pass'], bool)
+    assert 'phase1_vs_phase0' in report['pairwise_acceptance']
+    assert 'phase2_vs_phase1' in report['pairwise_acceptance']
+    assert report['phase_1_cnn_transformer']['seed_acceptance']['pass_count'] == 3
+    assert report['phase_2_mamba_ssm']['seed_acceptance']['pass_count'] == 3
 
 
-def test_benchmark_dominant_phase1_passes(benchmark_3way_dirs, tmp_path):
-    """With synthetically dominant Phase 1 metrics, overall_pass is True."""
-    phase0_dir, _, _ = benchmark_3way_dirs
-    dominant = tmp_path / 'dominant_phase1'
-    _write_seed_metrics(
-        dominant,
-        'seed_42',
-        {
-            'mae': 0.010,
-            'rmse': 0.012,
-            'sharpe': 2.0,
-            'sortino': 2.5,
-            'max_drawdown': -0.05,
-        },
-    )
-    output_path = tmp_path / 'dominant_report.json'
+def test_benchmark_leaderboard_is_ranked(benchmark_3way_dirs, tmp_path) -> None:
+    """Leaderboard rows should be present and sorted by runtime recommendation first."""
+    phase0_dir, phase1_dir, phase2_dir = benchmark_3way_dirs
+    output_path = tmp_path / 'report_leaderboard.json'
 
-    result = subprocess.run(
-        [
-            sys.executable,
-            'scripts/benchmark.py',
-            '--phase0-reports',
-            str(phase0_dir),
-            '--phase1-reports',
-            str(dominant),
-            '--output',
-            str(output_path),
-        ],
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0, (
-        f'Expected exit 0, got {result.returncode}.\nstderr: {result.stderr}'
-    )
+    _run_benchmark(phase0_dir, phase1_dir, phase2_dir, output_path)
+
     with open(output_path) as f:
         report = json.load(f)
-    assert report['acceptance']['overall_pass'] is True
+
+    leaderboard = report['leaderboard']
+    assert leaderboard[0]['phase_key'] == 'phase_2_mamba_ssm'
+    assert leaderboard[0]['recommended_for_runtime'] is True
+    assert leaderboard[0]['rank'] == 1
